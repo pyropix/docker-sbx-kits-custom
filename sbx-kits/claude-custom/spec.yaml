@@ -1,0 +1,43 @@
+schemaVersion: "2"
+kind: mixin
+name: claude-custom
+displayName: Claude Code custom Sandbox kit
+description: Claude Code agent with custom tools and pre-configured settings
+
+permissions:
+  network:
+    allow:
+      - code.claude.com
+      - docs.claude.com
+      # `apt-get update` refreshes every configured apt source from the base
+      # template. Keep all template sources allowed for amd64 and arm64 sandboxes.
+      - "archive.ubuntu.com:80"        # Ubuntu archive (amd64 main, HTTP)
+      - "security.ubuntu.com:80"       # Ubuntu security updates (amd64, HTTP)
+      - "ports.ubuntu.com:80"          # Ubuntu archive/security (arm64, HTTP)
+      - "download.docker.com:443"      # Docker's apt repo, pre-added by shell-docker
+
+security:
+  privileged: false
+
+setup:
+  install:
+    - command: apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends fd-find git-secrets nano tmux && rm -rf /var/lib/apt/lists/*
+      user: "0"
+      description: "Update apt index, upgrade installed packages, and install additional tools"
+    - command: |
+        set -euo pipefail
+        claude update
+      user: "1000"
+      description: Copy the shipped settings.template.json (statusLine already baked in) into a temp file and atomically replace the sandbox's settings.json, overwriting the base image's; ensure statusline.sh is executable
+    - command: |
+        set -euo pipefail
+        mkdir -p /home/agent/.claude
+        mv /home/agent/.claude/settings.template.json /home/agent/.claude/settings.json
+        chmod +x /home/agent/.claude/statusline.sh
+        chown -R agent:agent /home/agent/.claude
+      user: "0"
+      description: Copy the shipped settings.template.json (statusLine already baked in) into a temp file and atomically replace the sandbox's settings.json, overwriting the base image's; ensure statusline.sh is executable
+  startup:
+    - command: ["sh", "-c", 'mv -f "${HOME}/CLAUDE.template.md" "${WORKSPACE_DIR}/../CLAUDE.md"']
+      user: "1000"
+      description: Remove the CLAUDE.md file to avoid confusion with the sandbox's README.md

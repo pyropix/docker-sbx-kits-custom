@@ -1,0 +1,53 @@
+{
+    "model" : "sonnet",
+    "advisorModel": "opus",
+    "effortLevel": "medium",
+    "permissions": {
+        "defaultMode": "auto",
+        "disableBypassPermissionsMode": "disable",
+        "ask": [
+            "Bash(git push *)",
+            "Bash(gh pr create *)"
+        ],
+        "deny": [
+            "Bash(git reset *)",
+            "Bash(git clean *)",
+            "EnterPlanMode",
+            "ExitPlanMode",
+            "DesignSync",
+            "NotebookEdit",
+            "SendMessage",
+            "PushNotification",
+            "RemoteTrigger",
+            "ReportFindings",
+            "ScheduleWakeup",
+            "CronCreate",
+            "CronDelete",
+            "CronList"
+        ]
+    },
+    "statusLine": {
+        "type": "command",
+        "command": "/home/agent/.claude/statusline.sh"
+    },
+    "disableBundledSkills": true,
+    "disableWorkflows": true,
+    "disableRemoteControl": true,
+    "disableClaudeAiConnectors": true,
+    "disableArtifact": true,
+    "disableSkillShellExecution": true,
+    "includeCoAuthoredBy": false,
+    "feedbackSurveyRate": 0,
+    "alwaysThinkingEnabled": true,
+    "autoMemoryEnabled": false,
+    "autoCompactEnabled": false,
+    "useAutoModeDuringPlan": true,
+    "showClearContextOnPlanAccept": true,
+    "cleanupPeriodDays": 9999,
+    "theme": "dark",
+    "plansDirectory": "./docs/plans",
+    "skipAutoPermissionPrompt": true,
+    "companyAnnouncements": [
+        "Welcome to the Claude Code sandbox for development and testing!"
+    ]
+}
