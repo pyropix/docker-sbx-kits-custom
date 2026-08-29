@@ -77,6 +77,20 @@ def build_exec_argv(name: str) -> list[str]:
     return ["sbx", "exec", "-it", name, "bash"]
 
 
+def build_reattach_argv(name: str) -> list[str]:
+    """Re-attach to an existing sandbox without re-specifying kit/workspace/MCP.
+
+    `sbx run --name NAME` re-attaches when the sandbox already exists, reading
+    the agent from its spec. Passing --kit or --static-mcp on re-attach errors.
+    """
+    return ["sbx", "run", "--name", name]
+
+
+def sandbox_exists(name: str) -> bool:
+    rc, _ = run_capture(["sbx", "inspect", name])
+    return rc == 0
+
+
 def build_ssh_argv(name: str, sandbox_path: str) -> list[str]:
     return ["ssh", "-t", alias_for(name), f"cd {shlex.quote(sandbox_path)} ; bash --login"]
 
@@ -227,7 +241,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         ensure_mcp_registered(mcp, args.mcp_url, args.dry_run)
 
     if args.mode == "run":
-        argv = build_sbx_argv("run", name, kit, mcp, workspace)
+        if not args.dry_run and sandbox_exists(name):
+            print(f"Sandbox '{name}' already exists; re-attaching.")
+            argv = build_reattach_argv(name)
+        else:
+            argv = build_sbx_argv("run", name, kit, mcp, workspace)
         rc = run_interactive(argv, args.dry_run)
         if not args.dry_run:
             print_cleanup_hint(args, name)

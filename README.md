@@ -54,7 +54,7 @@ always reaches the same sandbox.
 
 | Flag                       | Effect                                                           |
 | -------------------------- | ---------------------------------------------------------------- |
-| `--mode run`               | Run Claude Code in the sandbox (default).                        |
+| `--mode run`               | Run Claude Code in the sandbox (default); re-attaches if it already exists. |
 | `--mode bash`              | Open a bash shell in the sandbox `--mode run` created.           |
 | `--mode ssh`               | Create the sandbox, register an SSH alias, and connect.          |
 | `--mode vscode`            | Same, then open VS Code over Remote-SSH.                         |

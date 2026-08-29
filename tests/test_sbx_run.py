@@ -492,6 +492,89 @@ class TestPrintCleanupHint(unittest.TestCase):
         self.assertEqual(self._round_trip_name(printed), name)
 
 
+class TestBuildReattachArgv(unittest.TestCase):
+    def test_only_contains_name_flag(self):
+        argv = sbx_run.build_reattach_argv("claude-custom")
+        self.assertEqual(argv, ["sbx", "run", "--name", "claude-custom"])
+
+    def test_does_not_include_kit_or_workspace(self):
+        argv = sbx_run.build_reattach_argv("claude-custom")
+        self.assertNotIn("--kit", argv)
+        self.assertNotIn("--static-mcp", argv)
+
+
+class TestRunModeExistingSandbox(unittest.TestCase):
+    def _patch(self, inspect_rc):
+        capture_calls = []
+        interactive_calls = []
+
+        def fake_capture(argv):
+            capture_calls.append(argv)
+            return inspect_rc, ""
+
+        def fake_interactive(argv, dry_run=False):
+            interactive_calls.append(argv)
+            return 0
+
+        self._orig_cap = sbx_run.run_capture
+        self._orig_int = sbx_run.run_interactive
+        sbx_run.run_capture = fake_capture
+        sbx_run.run_interactive = fake_interactive
+        return capture_calls, interactive_calls
+
+    def _restore(self):
+        sbx_run.run_capture = self._orig_cap
+        sbx_run.run_interactive = self._orig_int
+
+    def test_existing_sandbox_uses_reattach_argv(self):
+        cap, inter = self._patch(inspect_rc=0)
+        try:
+            args = sbx_run.build_parser().parse_args(["--workspace", "/tmp/proj"])
+            sbx_run.cmd_run(args)
+        finally:
+            self._restore()
+        self.assertEqual(len(inter), 1)
+        self.assertEqual(inter[0], ["sbx", "run", "--name", "claude-custom"])
+
+    def test_new_sandbox_uses_sbx_run_with_full_argv(self):
+        cap, inter = self._patch(inspect_rc=1)
+        try:
+            args = sbx_run.build_parser().parse_args(["--workspace", "/tmp/proj"])
+            sbx_run.cmd_run(args)
+        finally:
+            self._restore()
+        self.assertEqual(len(inter), 1)
+        self.assertEqual(inter[0][1], "run")
+        self.assertIn("--kit", inter[0])
+
+    def test_dry_run_skips_probe_and_emits_full_command(self):
+        import io
+        import contextlib
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = sbx_run.main(["--dry-run", "--workspace", "/tmp/proj"])
+        self.assertEqual(rc, 0)
+        out = buf.getvalue()
+        self.assertIn("sbx run --name claude-custom", out)
+        self.assertIn("--kit", out)
+
+    def test_inspect_probe_is_not_called_in_dry_run(self):
+        capture_calls = []
+
+        def fail_if_inspect(argv):
+            if argv[:2] == ["sbx", "inspect"]:
+                raise AssertionError("probe must not fire in dry_run")
+            return 0, ""
+
+        orig = sbx_run.run_capture
+        sbx_run.run_capture = fail_if_inspect
+        try:
+            sbx_run.main(["--dry-run", "--workspace", "/tmp/proj"])
+        finally:
+            sbx_run.run_capture = orig
+
+
 class TestNormaliseExit(unittest.TestCase):
     def test_zero_and_positive_pass_through(self):
         self.assertEqual(sbx_run.normalise_exit(0), 0)
