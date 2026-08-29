@@ -548,8 +548,8 @@ class TestRunModeExistingSandbox(unittest.TestCase):
         self.assertIn("--kit", inter[0])
 
     def test_dry_run_skips_probe_and_emits_full_command(self):
-        import io
         import contextlib
+        import io
 
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
@@ -560,8 +560,6 @@ class TestRunModeExistingSandbox(unittest.TestCase):
         self.assertIn("--kit", out)
 
     def test_inspect_probe_is_not_called_in_dry_run(self):
-        capture_calls = []
-
         def fail_if_inspect(argv):
             if argv[:2] == ["sbx", "inspect"]:
                 raise AssertionError("probe must not fire in dry_run")
