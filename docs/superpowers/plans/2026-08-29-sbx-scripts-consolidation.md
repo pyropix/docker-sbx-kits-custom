@@ -1496,10 +1496,13 @@ The bash scripts keep their existing sandbox names (`claude-custom-kit`, `claude
 ```bash
 for f in scripts/*.sh; do bash -n "$f" || echo "SYNTAX ERROR: $f"; done
 echo "--- resolution check (run from repo root and from scripts/)"
-bash -c 'BASH_SOURCE=(scripts/30_docker_sbx_claude_custom_kit.sh); \
-  REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"; echo "$REPO_ROOT"'
-(cd scripts && bash -c 'BASH_SOURCE=(30_docker_sbx_claude_custom_kit.sh); \
-  REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"; echo "$REPO_ROOT"')
+# BASH_SOURCE cannot be assigned meaningfully inside `bash -c` -- the array
+# stays empty -- so the check must run a real file on disk.
+printf '%s\n' 'REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"' \
+              'echo "$REPO_ROOT"' > scripts/_rr.sh
+bash scripts/_rr.sh
+(cd scripts && bash ./_rr.sh)
+rm -f scripts/_rr.sh
 ```
 
 Expected: no syntax errors, and both `REPO_ROOT` echoes print the same absolute repository root path.
