@@ -119,5 +119,69 @@ class TestDryRun(unittest.TestCase):
         self.assertNotIn("docker-sbx", out)
 
 
+class TestNormaliseExit(unittest.TestCase):
+    def test_signal_codes_become_128_plus_signal(self):
+        self.assertEqual(sbx_setup.normalise_exit(-15), 143)
+        self.assertEqual(sbx_setup.normalise_exit(-2), 130)
+
+    def test_zero_and_positive_pass_through(self):
+        self.assertEqual(sbx_setup.normalise_exit(0), 0)
+        self.assertEqual(sbx_setup.normalise_exit(7), 7)
+
+
+class TestRequireTool(unittest.TestCase):
+    def test_missing_tool_exits_with_hint(self):
+        import unittest.mock
+
+        with unittest.mock.patch.object(sbx_setup.shutil, "which", return_value=None):
+            with self.assertRaises(SystemExit) as ctx:
+                sbx_setup.require_tool("gh", "Run 'gh auth login'.")
+        self.assertIn("gh", str(ctx.exception))
+        self.assertIn("gh auth login", str(ctx.exception))
+
+    def test_present_tool_returns_path(self):
+        import unittest.mock
+
+        with unittest.mock.patch.object(
+            sbx_setup.shutil, "which", return_value="/usr/bin/gh"
+        ):
+            self.assertEqual(sbx_setup.require_tool("gh", "hint"), "/usr/bin/gh")
+
+
+class TestRequiredInstallTools(unittest.TestCase):
+    def test_darwin_requires_brew(self):
+        names = [n for n, _ in sbx_setup.required_install_tools("darwin")]
+        self.assertEqual(names, ["brew"])
+
+    def test_windows_requires_winget(self):
+        names = [n for n, _ in sbx_setup.required_install_tools("windows")]
+        self.assertEqual(names, ["winget"])
+
+    def test_linux_requires_curl_and_sudo(self):
+        names = [n for n, _ in sbx_setup.required_install_tools("linux")]
+        self.assertEqual(names, ["curl", "sudo"])
+
+
+class TestSecretGhToolChecks(unittest.TestCase):
+    def test_missing_gh_exits_before_running(self):
+        import unittest.mock
+
+        def fake_which(name):
+            return None if name == "gh" else f"/usr/bin/{name}"
+
+        with unittest.mock.patch.object(sbx_setup.shutil, "which", fake_which):
+            with unittest.mock.patch.object(sbx_setup.subprocess, "run") as run:
+                with self.assertRaises(SystemExit):
+                    sbx_setup.do_secret_gh(dry_run=False)
+                run.assert_not_called()
+
+    def test_dry_run_needs_no_tools(self):
+        import unittest.mock
+
+        with unittest.mock.patch.object(sbx_setup.shutil, "which", return_value=None):
+            rc = sbx_setup.do_secret_gh(dry_run=True)
+        self.assertEqual(rc, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

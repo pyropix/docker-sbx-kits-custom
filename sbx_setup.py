@@ -13,6 +13,7 @@ sbx_run.py.
 import argparse
 import getpass
 import shlex
+import shutil
 import subprocess
 import sys
 from typing import NamedTuple
@@ -86,6 +87,40 @@ def build_setup_commands(platform: str, user: str) -> list[Cmd]:
     ]
 
 
+def normalise_exit(rc: int) -> int:
+    """Map a child return code to a POSIX shell exit status.
+
+    subprocess returns -N for a child killed by signal N; a bare
+    sys.exit(-N) wraps to 256-N (e.g. -15 -> 241). Shells report a
+    signalled child as 128+N (143 for SIGTERM), so mirror that.
+    """
+    return 128 + (-rc) if rc < 0 else rc
+
+
+def require_tool(name: str, hint: str) -> str:
+    """Locate an executable or exit with an actionable message.
+
+    Without this, a missing tool raises a bare FileNotFoundError traceback
+    from subprocess rather than telling the user what to install.
+    """
+    found = shutil.which(name)
+    if found is None:
+        sys.exit(f"error: '{name}' not found on PATH. {hint}")
+    return found
+
+
+def required_install_tools(platform: str) -> list[tuple[str, str]]:
+    """External tools the install sequence shells out to, per platform."""
+    if platform == "linux":
+        return [
+            ("curl", "Install curl (e.g. 'sudo apt-get install curl')."),
+            ("sudo", "This installer needs sudo for apt-get and usermod."),
+        ]
+    if platform == "windows":
+        return [("winget", "Install 'App Installer' (winget) from the Microsoft Store.")]
+    return [("brew", "Install Homebrew from https://brew.sh first.")]
+
+
 def render(cmd: Cmd) -> str:
     if isinstance(cmd.args, str):
         return cmd.args
@@ -108,6 +143,9 @@ def run_interactive(cmd: Cmd, dry_run: bool) -> int:
 
 
 def do_install(platform: str, dry_run: bool) -> int:
+    if not dry_run:
+        for name, hint in required_install_tools(platform):
+            require_tool(name, hint)
     for cmd in build_setup_commands(platform, getpass.getuser()):
         rc = run_interactive(cmd, dry_run)
         if rc != 0 and not cmd.tolerate_failure:
@@ -129,6 +167,9 @@ def do_secret_gh(dry_run: bool) -> int:
         print("sbx secret set github --force  # token supplied on stdin")
         print("sbx secret ls")
         return 0
+
+    require_tool("gh", "Install the GitHub CLI, then run 'gh auth login'.")
+    require_tool("sbx", "Run 'uv run sbx_setup.py' to install it first.")
 
     proc = subprocess.run(
         ["gh", "auth", "token"], stdout=subprocess.PIPE, text=True
@@ -177,4 +218,8 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(normalise_exit(main()))
+    except KeyboardInterrupt:
+        # Ctrl-C during an interactive install step should exit quietly.
+        sys.exit(130)

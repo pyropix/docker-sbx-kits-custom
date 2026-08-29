@@ -117,6 +117,25 @@ def render(argv: list[str]) -> str:
     return " ".join(shlex.quote(a) for a in argv)
 
 
+def normalise_exit(rc: int) -> int:
+    """Map a child return code to a POSIX shell exit status.
+
+    subprocess returns -N for a child killed by signal N; a bare
+    sys.exit(-N) wraps to 256-N (e.g. -15 -> 241). Shells report a
+    signalled child as 128+N (143 for SIGTERM), so mirror that.
+    """
+    return 128 + (-rc) if rc < 0 else rc
+
+
+def invocation_prefix() -> str:
+    """How to re-invoke this script on the current platform.
+
+    The shebang runs it directly on POSIX; on Windows the docs call it via
+    `uv run` because the shebang does not apply there.
+    """
+    return "uv run sbx_run.py" if sys.platform == "win32" else "./sbx_run.py"
+
+
 def run_interactive(argv: list[str], dry_run: bool = False) -> int:
     """Run a command with stdin/stdout/stderr inherited.
 
@@ -232,7 +251,7 @@ def print_cleanup_hint(args: argparse.Namespace, name: str) -> None:
             flags += ["--mcp", args.mcp]
     print(
         f"\nSandbox '{name}' may still be running. To remove it:\n"
-        f"  ./sbx_run.py stop --rm {' '.join(flags)}".rstrip()
+        f"  {invocation_prefix()} stop --rm {' '.join(flags)}".rstrip()
     )
 
 
@@ -293,7 +312,7 @@ def sandbox_workspace_path(name: str, host_workspace: Path, dry_run: bool) -> st
     if dry_run:
         return str(host_workspace)
 
-    rc, out = run_capture(["sbx", "inspect", name])
+    rc, out = run_capture(["sbx", "inspect", name, "--json"])
     if rc == 0:
         found = parse_inspect_workspace(out)
         # Same sanity check as the exec probe below: `sbx inspect` is
@@ -333,10 +352,17 @@ def ensure_mcp_registered(mcp: str, mcp_url: str | None, dry_run: bool) -> None:
     if dry_run:
         print(render(add_argv))
         return
-    rc, out = run_capture(["sbx", "mcp", "ls"])
-    if rc == 0 and mcp in out.split():
+    # `sbx mcp inspect NAME` exits 0 iff NAME is registered -- an exact
+    # per-server check, unlike a token match over the whole `sbx mcp ls`
+    # listing, which a short or generic name could false-positive.
+    rc, _ = run_capture(["sbx", "mcp", "inspect", mcp])
+    if rc == 0:
         return
-    run_interactive(add_argv)
+    rc = run_interactive(add_argv)
+    if rc != 0:
+        # A failed registration would otherwise surface later as an obscure
+        # `sbx run --static-mcp` failure.
+        sys.exit(normalise_exit(rc))
 
 
 def cmd_attach(
@@ -379,9 +405,16 @@ def cmd_stop(args: argparse.Namespace) -> int:
     name = sandbox_name(args)
     rc = run_interactive(["sbx", "stop", name], args.dry_run)
     if args.rm:
-        rc = run_interactive(["sbx", "rm", name, "--force"], args.dry_run)
+        # Always attempt the removal, but keep a failed `sbx stop` visible:
+        # don't let a successful rm mask it.
+        rm_rc = run_interactive(["sbx", "rm", name, "--force"], args.dry_run)
+        rc = rc or rm_rc
     return rc
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(normalise_exit(main()))
+    except KeyboardInterrupt:
+        # Ctrl-C out of a sandbox TUI should exit quietly, not traceback.
+        sys.exit(130)
