@@ -15,7 +15,7 @@
 - **No third-party dependencies.** `dependencies = []` in every PEP 723 block. `uv` makes dependencies cheap but not free; each is a first-run download on a script whose job is to launch something else quickly.
 - **`requires-python = ">=3.11"`** in every PEP 723 block.
 - **Interactive commands must inherit stdio.** `subprocess.run(argv)` with no `capture_output`, no pipes, no `text=True`. `sbx run claude` is a full-screen TUI; `ssh -t`, `sbx exec -it`, `code --remote`, `sudo` and `sbx login` all need the real terminal. Capturing any of them hangs the script on an invisible prompt.
-- **Capture only where explicitly specified.** Exactly three places capture: the `sbx create` "already exists" probe, the sandbox-workspace-path probe, and `gh auth token`. Everything else inherits.
+- **Capture only where explicitly specified.** Four places capture, all non-interactive: the `sbx create` "already exists" probe, the sandbox-workspace-path probe (`sbx inspect`, then `sbx exec`), the `sbx mcp ls` membership check, and `gh auth token`. Everything else inherits.
 - **`shell=True` is used exactly once:** the `curl -fsSL https://get.docker.com | sudo REPO_ONLY=1 sh` pipeline in `sbx_setup.py`. It is a fixed literal with no interpolated input. Its stdio is still inherited, because `sudo` prompts.
 - **Both scripts need `if __name__ == "__main__":` guards.** The tests `import sbx_run` and `import sbx_setup`; without the guard, importing executes `main()`.
 - **Exit codes propagate unchanged** from `sbx` and friends, so the scripts compose in pipelines.
