@@ -10,6 +10,7 @@ scenario, so the ten bash scripts this replaces cannot drift apart again.
 """
 
 import argparse
+import json
 import shlex
 import shutil
 import subprocess
@@ -203,6 +204,9 @@ def cmd_run(args: argparse.Namespace) -> int:
     if args.mode == "bash":
         return run_interactive(build_exec_argv(name), args.dry_run)
 
+    if mcp:
+        ensure_mcp_registered(mcp, args.mcp_url, args.dry_run)
+
     if args.mode == "run":
         argv = build_sbx_argv("run", name, kit, mcp, workspace)
         rc = run_interactive(argv, args.dry_run)
@@ -236,12 +240,138 @@ def main(argv: list[str] | None = None) -> int:
     return cmd_run(args)
 
 
-def cmd_attach(args, name, kit, mcp, workspace) -> int:
-    raise NotImplementedError("implemented in Task 3")
+_WORKSPACE_KEYS = ("workspace", "workspaceDir", "WorkspaceDir", "workspace_dir")
 
 
-def cmd_stop(args) -> int:
-    raise NotImplementedError("implemented in Task 3")
+def parse_inspect_workspace(output: str) -> str | None:
+    """Pull the sandbox-side workspace path out of `sbx inspect` output.
+
+    The exact format is unverified -- sbx cannot be installed in the
+    authoring environment -- so this recognises several plausible JSON
+    shapes and returns None otherwise, letting the caller fall through to
+    the next probe rather than acting on a guess.
+    """
+    try:
+        data = json.loads(output)
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+    def search(node) -> str | None:
+        if isinstance(node, dict):
+            for key in _WORKSPACE_KEYS:
+                value = node.get(key)
+                if isinstance(value, str) and value:
+                    return value
+            for value in node.values():
+                found = search(value)
+                if found:
+                    return found
+        elif isinstance(node, list):
+            for item in node:
+                found = search(item)
+                if found:
+                    return found
+        return None
+
+    return search(data)
+
+
+def sandbox_workspace_path(name: str, host_workspace: Path, dry_run: bool) -> str:
+    """Resolve the workspace path *inside* the sandbox.
+
+    The host path is not usable directly on Windows, where the host form is
+    C:\\Users\\... and the mount point is not. Probes in order of
+    reliability: sbx inspect is host-side structured data and needs no
+    running sandbox, whereas sbx exec requires one -- and --mode ssh reaches
+    this immediately after sbx create, which may not have started it.
+    """
+    if dry_run:
+        return str(host_workspace)
+
+    rc, out = run_capture(["sbx", "inspect", name])
+    if rc == 0:
+        found = parse_inspect_workspace(out)
+        if found:
+            return found
+
+    rc, out = run_capture(["sbx", "exec", name, "sh", "-c", "echo $WORKSPACE_DIR"])
+    if rc == 0:
+        candidate = out.strip().splitlines()[-1].strip() if out.strip() else ""
+        if candidate.startswith("/"):
+            return candidate
+
+    return str(host_workspace)
+
+
+def ensure_created(argv: list[str], dry_run: bool) -> None:
+    """Create the sandbox, treating "already exists" as success."""
+    if dry_run:
+        print(render(argv))
+        return
+    rc, out = run_capture(argv)
+    print(out, end="")
+    if rc != 0 and "already exists" not in out:
+        sys.exit(rc)
+
+
+def ensure_mcp_registered(mcp: str, mcp_url: str | None, dry_run: bool) -> None:
+    """Register an MCP server, skipping it if already present.
+
+    `sbx mcp add` fails on an already-registered name, so a second
+    `--mcp mslearn` would abort without this check.
+    """
+    add_argv = ["sbx", "mcp", "add", mcp, "--url", mcp_url_for(mcp, mcp_url)]
+    if dry_run:
+        print(render(add_argv))
+        return
+    rc, out = run_capture(["sbx", "mcp", "ls"])
+    if rc == 0 and mcp in out.split():
+        return
+    run_interactive(add_argv)
+
+
+def cmd_attach(
+    args: argparse.Namespace,
+    name: str,
+    kit: Path | None,
+    mcp: str | None,
+    workspace: Path,
+) -> int:
+    """Handle --mode ssh and --mode vscode."""
+    code_exe = None
+    if args.mode == "vscode" and not args.dry_run:
+        code_exe = require_tool(
+            "code",
+            "Install VS Code and the 'Remote - SSH' extension.",
+        )
+
+    ensure_created(build_sbx_argv("create", name, kit, mcp, workspace), args.dry_run)
+
+    rc = run_interactive(
+        ["sbx", "setup", "ssh", "--alias", alias_for(name)], args.dry_run
+    )
+    if rc != 0:
+        return rc
+
+    sandbox_path = sandbox_workspace_path(name, workspace, args.dry_run)
+
+    if args.mode == "vscode":
+        argv = build_vscode_argv(code_exe or "code", name, sandbox_path)
+    else:
+        argv = build_ssh_argv(name, sandbox_path)
+
+    rc = run_interactive(argv, args.dry_run)
+    if not args.dry_run:
+        print_cleanup_hint(args, name)
+    return rc
+
+
+def cmd_stop(args: argparse.Namespace) -> int:
+    name = sandbox_name(args)
+    rc = run_interactive(["sbx", "stop", name], args.dry_run)
+    if args.rm:
+        rc = run_interactive(["sbx", "rm", name, "--force"], args.dry_run)
+    return rc
 
 
 if __name__ == "__main__":

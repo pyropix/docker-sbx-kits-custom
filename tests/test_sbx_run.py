@@ -255,5 +255,115 @@ class TestDryRun(unittest.TestCase):
         self.assertIn("sbx exec -it claude-custom bash", buf.getvalue())
 
 
+class TestParseInspectWorkspace(unittest.TestCase):
+    """The exact `sbx inspect` output format is unverified (no sbx available
+    at authoring time), so the parser is tolerant and returns None rather
+    than guessing when it does not recognise the shape."""
+
+    def test_json_workspace_key(self):
+        self.assertEqual(
+            sbx_run.parse_inspect_workspace('{"workspace": "/work/proj"}'),
+            "/work/proj",
+        )
+
+    def test_json_camel_case_key(self):
+        self.assertEqual(
+            sbx_run.parse_inspect_workspace('{"workspaceDir": "/work/proj"}'),
+            "/work/proj",
+        )
+
+    def test_json_nested_under_a_parent_object(self):
+        self.assertEqual(
+            sbx_run.parse_inspect_workspace(
+                '{"config": {"WorkspaceDir": "/work/proj"}}'
+            ),
+            "/work/proj",
+        )
+
+    def test_json_list_wrapper(self):
+        self.assertEqual(
+            sbx_run.parse_inspect_workspace('[{"workspace": "/work/proj"}]'),
+            "/work/proj",
+        )
+
+    def test_unrecognised_output_returns_none(self):
+        self.assertIsNone(sbx_run.parse_inspect_workspace("some unstructured text"))
+
+    def test_invalid_json_returns_none(self):
+        self.assertIsNone(sbx_run.parse_inspect_workspace("{not json"))
+
+    def test_empty_output_returns_none(self):
+        self.assertIsNone(sbx_run.parse_inspect_workspace(""))
+
+
+class TestSandboxWorkspacePathDryRun(unittest.TestCase):
+    def test_dry_run_uses_the_host_path_without_probing(self):
+        result = sbx_run.sandbox_workspace_path(
+            "claude-ssh", Path("/home/user/proj"), dry_run=True
+        )
+        self.assertEqual(result, "/home/user/proj")
+
+
+class TestAttachDryRun(unittest.TestCase):
+    def _run(self, argv):
+        import io
+        import contextlib
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = sbx_run.main(argv)
+        return rc, buf.getvalue()
+
+    def test_ssh_mode_creates_sets_up_ssh_then_connects(self):
+        rc, out = self._run(["--dry-run", "--mode", "ssh", "--workspace", "/tmp/proj"])
+        self.assertEqual(rc, 0)
+        self.assertIn("sbx create --name claude-custom-ssh", out)
+        self.assertIn("sbx setup ssh --alias claude-custom-ssh.sbx", out)
+        self.assertIn("ssh -t claude-custom-ssh.sbx", out)
+        self.assertLess(out.index("sbx create"), out.index("sbx setup ssh"))
+        self.assertLess(out.index("sbx setup ssh"), out.index("ssh -t"))
+
+    def test_vscode_mode_emits_the_remote_flag(self):
+        rc, out = self._run(["--dry-run", "--mode", "vscode", "--no-kit"])
+        self.assertEqual(rc, 0)
+        self.assertIn("--remote ssh-remote+claude-vscode.sbx", out)
+
+    def test_mcp_registration_precedes_the_run(self):
+        rc, out = self._run(["--dry-run", "--no-kit", "--mcp", "mslearn"])
+        self.assertEqual(rc, 0)
+        self.assertIn("sbx mcp add mslearn --url https://learn.microsoft.com/api/mcp", out)
+        self.assertLess(out.index("sbx mcp add"), out.index("sbx run"))
+
+
+class TestStopDryRun(unittest.TestCase):
+    def _run(self, argv):
+        import io
+        import contextlib
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = sbx_run.main(argv)
+        return rc, buf.getvalue()
+
+    def test_stop_without_rm(self):
+        rc, out = self._run(["stop", "--dry-run"])
+        self.assertEqual(rc, 0)
+        self.assertIn("sbx stop claude-custom", out)
+        self.assertNotIn("sbx rm", out)
+
+    def test_stop_with_rm_stops_then_removes(self):
+        rc, out = self._run(["stop", "--rm", "--dry-run"])
+        self.assertEqual(rc, 0)
+        self.assertIn("sbx stop claude-custom", out)
+        self.assertIn("sbx rm claude-custom --force", out)
+        self.assertLess(out.index("sbx stop"), out.index("sbx rm"))
+
+    def test_stop_derives_the_same_name_as_the_matching_run(self):
+        _, run_out = self._run(["--dry-run", "--mode", "ssh", "--no-kit"])
+        _, stop_out = self._run(["stop", "--dry-run", "--mode", "ssh", "--no-kit"])
+        self.assertIn("claude-ssh", run_out)
+        self.assertIn("sbx stop claude-ssh", stop_out)
+
+
 if __name__ == "__main__":
     unittest.main()
