@@ -29,12 +29,15 @@ manual-stop instructions in comments.
   single edit.
 - Fix the `30`/`31` name mismatch structurally, not by hand.
 - Unify cleanup on the manual direction chosen in commit `a275cf2`.
+- Keep the bash scripts working, moved out of the repository root.
 
 ## Non-goals
 
 - Changing `sbx-kits/`. The `claude-custom` kit is untouched.
 - Packaging for PyPI. See "Invocation" for why `uvx` is out of scope.
 - Supporting agents other than `claude`.
+- Rewriting the bash scripts. They are moved and their paths fixed; their
+  structure is left alone.
 
 ## Platform findings
 
@@ -83,10 +86,15 @@ is to launch something else quickly.
 
 Two scripts, split by lifecycle:
 
-| File | Scope |
+| Path | Scope |
 | --- | --- |
 | `sbx_setup.py` | One-time host bootstrap: platform-gated install, GitHub secret. |
 | `sbx_run.py` | The kit × mode matrix, plus `stop`. |
+| `scripts/*.sh` | The ten original bash scripts, kept working. |
+
+The Python scripts stay at the repository root as the primary entry point.
+The bash scripts move into `scripts/`, which both unclutters the root and
+signals which interface is current without deleting anything.
 
 Underscores rather than hyphens in the filenames so that `tests/` can
 import the pure functions directly; a hyphenated filename requires
@@ -111,6 +119,7 @@ substantially beyond twenty lines.
 ./sbx_run.py --mode bash         # sbx exec -it <name> bash
 ./sbx_run.py --mcp mslearn       # add and attach an MCP server
 ./sbx_run.py --name my-sandbox   # override the derived name
+./sbx_run.py --workspace ~/proj  # mount some other directory
 ./sbx_run.py --dry-run           # print commands instead of running them
 ./sbx_run.py stop [--rm]         # stop, optionally remove
 ```
@@ -133,7 +142,7 @@ Four layers, so that the logic worth testing has no I/O in it:
 | Layer | Responsibility |
 | --- | --- |
 | naming | `(kit, mode) -> str`. Pure. |
-| argv building | `(name, kit, mcp, cwd, mode) -> list[str]`. Pure. |
+| argv building | `(name, kit, mcp, workspace, mode) -> list[str]`. Pure. |
 | process | `run_interactive()`, `run_capture()`. All I/O. |
 | commands | `cmd_run`, `cmd_stop`. Orchestration only. |
 
@@ -220,9 +229,9 @@ sandbox. The current scripts pass `$(pwd)`, the host path, which works only
 because host and sandbox paths coincide on Linux. On Windows the host path
 is `C:\Users\...`, which is not the mount point.
 
-The host path itself needs no translation: `Path.cwd()` already yields the
-native form that `sbx` and `sbx.exe` expect. This is a direct benefit of
-choosing Python over bash-plus-`cygpath`.
+The host path itself needs no translation: `Path` already yields the native
+form that `sbx` and `sbx.exe` expect, `C:\Users\...` included. This is a
+direct benefit of choosing Python over bash-plus-`cygpath`.
 
 The sandbox path is resolved at runtime, first match wins:
 
@@ -242,6 +251,38 @@ The probe is unverified at design time because `sbx` is not installable in
 the authoring environment. The fallback chain makes an incorrect first
 guess non-fatal; confirm which branch fires on the first real run and
 simplify if warranted.
+
+### Workspace resolution
+
+The mounted workspace defaults to the **repository root**, resolved from
+the script's own location rather than from the invocation directory:
+
+```python
+REPO_ROOT = Path(__file__).resolve().parent          # sbx_run.py sits at the root
+```
+
+```bash
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # scripts/*.sh
+```
+
+Deriving from the script location rather than `$(pwd)` or a literal
+`$(pwd)/..` means both interfaces mount the same directory no matter where
+they are invoked from. A literal `$(pwd)/..` in `scripts/` would be correct
+only when the caller has already `cd`-ed into `scripts/`, and would mount
+the repository's *parent* when run from the root — which is the more
+natural invocation.
+
+This is a deliberate change from the current behaviour, where the scripts
+mount `$(pwd)`, whatever that happens to be. Pinning to the repository root
+makes the two interfaces agree and matches how the scripts are actually
+used: sandboxing work on this repository's kits. `--workspace <path>` on
+`sbx_run.py` restores the ability to sandbox an arbitrary directory;
+`--workspace .` reproduces the old behaviour exactly.
+
+The kit path is resolved the same way — `REPO_ROOT / "sbx-kits" /
+"claude-custom"` in Python, `"$REPO_ROOT/sbx-kits/claude-custom/"` in bash
+— so the relative `./sbx-kits/...` in the current scripts becomes
+location-independent rather than merely gaining a `../`.
 
 ### Cleanup
 
@@ -343,6 +384,11 @@ Coverage:
 - `--name` overriding the derived value.
 - `sbx_setup.py --dry-run --platform {linux,windows,darwin}` emitting the
   right command sequence for each, verifiable from a Linux host.
+- Workspace resolution defaulting to the repository root, and `--workspace`
+  overriding it.
+- The kit path resolving under the repository root rather than the
+  invocation directory — asserted by running `--dry-run` from a different
+  working directory.
 
 Not covered by automated tests: TTY inheritance and the `WORKSPACE_DIR`
 probe, both of which require a real `sbx` installation. Verify manually on
@@ -350,11 +396,24 @@ first run.
 
 ## Migration
 
-All ten `.sh` files are deleted. The README's script table is replaced by a
-command table plus an old-to-new mapping, so the change is
-self-documenting:
+All ten `.sh` files move from the repository root into `scripts/`, using
+`git mv` so history follows them. They are **kept working**, not frozen:
 
-| Old script | New command |
+- The `--kit` argument becomes `"$REPO_ROOT/sbx-kits/claude-custom/"`, with
+  `REPO_ROOT` derived as shown in "Workspace resolution". A bare `../` would
+  work only from inside `scripts/`.
+- The workspace argument becomes `"$REPO_ROOT"` in place of `"$(pwd)"`.
+- `31_docker_sbx_claude_custom_kit_bash.sh` is corrected to exec into
+  `claude-custom-kit`, the name `30` actually creates. The defect is fixed
+  in both interfaces, not just the Python one.
+- The bash scripts keep their existing sandbox names. Renaming them to match
+  the Python derivation would break anyone's running sandboxes for no gain,
+  since the two interfaces are not meant to share sandboxes.
+
+The README's script table gains a `scripts/` prefix and is preceded by the
+new Python command table, with this equivalence mapping:
+
+| Bash script (in `scripts/`) | Python equivalent |
 | --- | --- |
 | `00_docker_sbx_setup.sh` | `uv run sbx_setup.py` |
 | `10_docker_sbx_secret_gh.sh` | `uv run sbx_setup.py --secret-gh` |
@@ -367,17 +426,22 @@ self-documenting:
 | `32_docker_sbx_claude_custom_kit_ssh.sh` | `./sbx_run.py --mode ssh` |
 | `33_docker_sbx_claude_custom_kit_ssh_vscode.sh` | `./sbx_run.py --mode vscode` |
 
-The README also gains `uv` as a prerequisite, and the Windows invocation
-form.
+The README also gains `uv` as a prerequisite, the Windows invocation form,
+and a note that the bash scripts remain available for hosts without `uv`.
+
+Because nothing is deleted, this migration is reversible: the Python
+scripts can be removed and `scripts/` moved back with no loss.
 
 ### Orphaned sandboxes
 
-Four of the derived names differ from the ones the old scripts used, so any
-existing sandboxes keep running while the new script creates fresh ones
-beside them. Migration means listing with `sbx ls` and removing the old
-names by hand:
+Four of the Python-derived names differ from the ones the bash scripts use.
+Since the bash scripts keep their names, the two interfaces create separate
+sandboxes for the same scenario. That is intentional — they can be run side
+by side without interfering — but it means switching to the Python scripts
+leaves the old sandboxes running. Listing with `sbx ls` and removing them by
+hand is a one-time cleanup:
 
-| Old sandbox | New sandbox |
+| Bash sandbox | Python sandbox |
 | --- | --- |
 | `claude-nokit` | `claude` |
 | `claude-custom-kit` | `claude-custom` |
