@@ -142,11 +142,33 @@ def run_interactive(cmd: Cmd, dry_run: bool) -> int:
     return subprocess.run(cmd.args).returncode
 
 
-def do_install(platform: str, dry_run: bool) -> int:
+def confirm_plan(platform: str, commands: list[Cmd]) -> bool:
+    """Show what will run for this platform and ask the user to agree."""
+    print(f"The following will be executed for platform '{platform}':")
+    for cmd in commands:
+        print(f"  {render(cmd)}")
+    if platform == "linux":
+        print(
+            "\nNote: the steps above run under sudo (password prompt expected), "
+            "and the kvm group change requires a re-login to take effect."
+        )
+    print()
+    try:
+        reply = input("Proceed? [y/N] ").strip().lower()
+    except EOFError:
+        reply = ""
+    return reply in ("y", "yes")
+
+
+def do_install(platform: str, dry_run: bool, assume_yes: bool = False) -> int:
+    commands = build_setup_commands(platform, getpass.getuser())
     if not dry_run:
+        if not assume_yes and not confirm_plan(platform, commands):
+            print("aborted: user did not confirm.")
+            return 1
         for name, hint in required_install_tools(platform):
             require_tool(name, hint)
-    for cmd in build_setup_commands(platform, getpass.getuser()):
+    for cmd in commands:
         rc = run_interactive(cmd, dry_run)
         if rc != 0 and not cmd.tolerate_failure:
             return rc
@@ -206,6 +228,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--dry-run", action="store_true", help="print commands instead of running them"
     )
+    parser.add_argument(
+        "--yes", "-y", action="store_true", help="skip the confirmation prompt"
+    )
     return parser
 
 
@@ -214,7 +239,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.secret_gh:
         return do_secret_gh(args.dry_run)
     platform = normalise_platform(args.platform) if args.platform else current_platform()
-    return do_install(platform, args.dry_run)
+    return do_install(platform, args.dry_run, assume_yes=args.yes)
 
 
 if __name__ == "__main__":
