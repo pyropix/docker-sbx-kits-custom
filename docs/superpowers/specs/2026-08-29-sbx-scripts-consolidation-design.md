@@ -446,17 +446,21 @@ today's feature parity, with paths and the `30`/`31` defect fixed:
   `claude-custom-kit`, the name `30` actually creates. The defect is fixed
   in both interfaces, not just the Python one.
 - The bash scripts keep their existing sandbox names. Renaming them to match
-  the Python derivation would break anyone's running sandboxes for no gain,
-  since the two interfaces are not meant to share sandboxes.
+  the Python derivation would break anyone's running sandboxes for no gain:
+  the two interfaces are independent, and the three cases where their names
+  happen to coincide are a byproduct of the name derivation, not a designed
+  handoff between them.
 
 Because nothing is deleted, this migration is reversible: the Python
 scripts can be removed and `scripts/` moved back with no loss.
 
 ### Orphaned sandboxes
 
-Four of the Python-derived names differ from the ones the bash scripts use,
-so for those four scenarios the two interfaces create separate sandboxes and
-can be run side by side without interfering. The other three scenarios
+Five of the eight scenarios produce a Python-derived name that differs from
+the one the bash script uses (only four distinct name pairs, since `30` and
+`31` both derive `claude-custom`), so for those five scenarios the two
+interfaces create separate sandboxes and can be run side by side without
+interfering. The other three scenarios
 (`--mcp mslearn`, and `--mode ssh` with and without the kit) derive exactly
 the sandbox name their bash counterpart uses, so those Python commands reach
 the same sandbox as the matching bash script rather than a separate one.
