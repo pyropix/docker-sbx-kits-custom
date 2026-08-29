@@ -4,15 +4,15 @@ set -euxo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Create a new sandbox with the current working directory mounted (skip if it already exists)
-create_output=$(sbx create --name claude-ssh claude "$REPO_ROOT" 2>&1) && echo "$create_output" || {
-  if grep -q "already exists" <<<"$create_output"; then
-    echo "$create_output"
-    echo "Sandbox already exists, skipping creation."
-  else
-    echo "$create_output" >&2
-    exit 1
-  fi
-}
+if create_output=$(sbx create --name claude-ssh claude "$REPO_ROOT" 2>&1); then
+  echo "$create_output"
+elif grep -q "already exists" <<<"$create_output"; then
+  echo "$create_output"
+  echo "Sandbox already exists, skipping creation."
+else
+  echo "$create_output" >&2
+  exit 1
+fi
 
 # Setup SSH access to the sandbox
 sbx setup ssh --alias claude-ssh.sbx
