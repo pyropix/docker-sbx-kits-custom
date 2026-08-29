@@ -175,10 +175,22 @@ preserves current behaviour.
 | `ssh` | `ensure_created`, `sbx setup ssh --alias <n>.sbx`, `ssh -t <n>.sbx "cd <sandbox_path>; bash --login"` |
 | `vscode` | `ensure_created`, `sbx setup ssh --alias <n>.sbx`, `code --remote ssh-remote+<n>.sbx <sandbox_path>` |
 
-`--mcp <name>` runs `sbx mcp add <name> --url <url>` before the run and
-passes `--static-mcp <name>`. The Microsoft Learn server
+`--mcp <name>` registers the server before the run and passes
+`--static-mcp <name>`. The Microsoft Learn server
 (`https://learn.microsoft.com/api/mcp`) ships as a known name so that
 `--mcp mslearn` works without a URL; any other value requires `--mcp-url`.
+
+Registration must be idempotent. `sbx mcp add` on an already-registered
+name fails, so a second `./sbx_run.py --mcp mslearn` would abort — script
+`21` only avoids this by never having been run twice under `set -e`. The
+script checks `sbx mcp ls` first and skips `add` when the name is already
+present. (`21` already calls `sbx mcp ls`, so the listing is available.)
+
+Note one divergence to confirm on first run: script `21` writes
+`sbx run claude --name ... --static-mcp ...`, with the agent before the
+flags, while `20` and `30` write `sbx run --name ... claude`, with the
+agent after. The canonical form follows the majority — flags first, agent
+last, workspace final.
 
 `ensure_created` is idempotent: it captures the output of `sbx create` and
 treats an "already exists" message as success, re-raising anything else.
@@ -214,11 +226,17 @@ choosing Python over bash-plus-`cygpath`.
 
 The sandbox path is resolved at runtime, first match wins:
 
-1. `sbx exec <name> sh -c 'echo $WORKSPACE_DIR'` — `sbx-kits/claude-custom/spec.yaml`
-   already relies on this variable in its startup step, so it exists in the
-   sandbox.
-2. `sbx inspect <name>`, parsing the workspace mount.
+1. `sbx inspect <name>`, parsing the workspace mount. This is structured
+   host-side data and needs no running sandbox.
+2. `sbx exec <name> sh -c 'echo $WORKSPACE_DIR'`.
 3. The host path, as today.
+
+`sbx inspect` is tried first despite `spec.yaml` referencing
+`WORKSPACE_DIR`, for two reasons. That reference is in a *startup command*,
+where the runtime injects the variable — which is not evidence it is
+exported into an arbitrary `sbx exec` shell. And `sbx exec` requires a
+*running* sandbox, whereas `--mode ssh` reaches the probe immediately after
+`sbx create`, which may not have started it.
 
 The probe is unverified at design time because `sbx` is not installable in
 the authoring environment. The fallback chain makes an incorrect first
@@ -274,10 +292,17 @@ immediately, leaving the parent's group membership unchanged. The script
 prints the log-out-and-back-in instruction instead of executing something
 that appears to work and does not.
 
+The same inherited-stdio rule from `sbx_run.py` applies here, and matters
+more: `sudo apt-get` prompts for a password, `sbx login` is interactive,
+and `winget install` writes progress to the console. Capturing any of these
+hangs the script on an invisible prompt. Every command in this script uses
+`run_interactive`; nothing is captured.
+
 The `curl | sudo sh` step is emitted as a shell pipeline via
 `subprocess.run(..., shell=True)`. This is the one place `shell=True` is
-acceptable: the command is a fixed literal with no interpolated input, and
-it is not interactive.
+acceptable: the command is a fixed literal with no interpolated input. It
+is still interactive — `sudo` prompts — so its stdio is inherited like
+everything else.
 
 ## Error handling
 
@@ -300,8 +325,14 @@ useful on its own and is the seam the tests use.
 `tests/test_sbx.py`, stdlib `unittest`, no pytest dependency. Run with:
 
 ```
-uv run -m unittest discover tests
+python3 -m unittest discover -s tests -t .
 ```
+
+`-t .` is required: without it, `discover` treats `tests/` as the top-level
+directory, leaving the repository root off `sys.path` so `import sbx_run`
+fails — which would defeat the point of the underscore filenames. The tests
+are stdlib-only, so plain `python3` is used; there is no dependency for
+`uv run` to resolve.
 
 Coverage:
 
@@ -338,6 +369,22 @@ self-documenting:
 
 The README also gains `uv` as a prerequisite, and the Windows invocation
 form.
+
+### Orphaned sandboxes
+
+Four of the derived names differ from the ones the old scripts used, so any
+existing sandboxes keep running while the new script creates fresh ones
+beside them. Migration means listing with `sbx ls` and removing the old
+names by hand:
+
+| Old sandbox | New sandbox |
+| --- | --- |
+| `claude-nokit` | `claude` |
+| `claude-custom-kit` | `claude-custom` |
+| `claude-ssh-vscode` | `claude-vscode` |
+| `claude-custom-ssh-vscode` | `claude-custom-vscode` |
+
+`claude-mcp`, `claude-ssh` and `claude-custom-ssh` keep their names.
 
 ## Open items
 
