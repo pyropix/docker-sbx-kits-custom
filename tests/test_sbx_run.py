@@ -1,5 +1,6 @@
 """Unit tests for the pure functions in sbx_run.py."""
 
+import argparse
 import unittest
 from pathlib import Path
 
@@ -130,6 +131,15 @@ class TestOtherArgvBuilders(unittest.TestCase):
         self.assertEqual(
             sbx_run.build_ssh_argv("claude-ssh", "/work/proj"),
             ["ssh", "-t", "claude-ssh.sbx", "cd /work/proj ; bash --login"],
+        )
+
+    def test_ssh_argv_quotes_a_path_with_a_space(self):
+        self.assertEqual(
+            sbx_run.build_ssh_argv("claude-ssh", "/home/u/My Project"),
+            [
+                "ssh", "-t", "claude-ssh.sbx",
+                "cd '/home/u/My Project' ; bash --login",
+            ],
         )
 
     def test_vscode_argv(self):
@@ -304,6 +314,55 @@ class TestSandboxWorkspacePathDryRun(unittest.TestCase):
         self.assertEqual(result, "/home/user/proj")
 
 
+class TestSandboxWorkspacePathProbeChain(unittest.TestCase):
+    """`sbx inspect` is host-side data, so a non-absolute candidate (e.g. a
+    Windows host path) must not shortcut the fallback chain."""
+
+    def test_non_absolute_inspect_result_falls_through_to_exec_probe(self):
+        calls = []
+
+        def fake_run_capture(argv):
+            calls.append(argv)
+            if argv[:2] == ["sbx", "inspect"]:
+                return 0, '{"workspace": "C:\\\\Users\\\\me\\\\proj"}'
+            if argv[:2] == ["sbx", "exec"]:
+                return 0, "/home/user/proj\n"
+            raise AssertionError(f"unexpected call: {argv}")
+
+        original = sbx_run.run_capture
+        sbx_run.run_capture = fake_run_capture
+        try:
+            result = sbx_run.sandbox_workspace_path(
+                "claude-ssh", Path("/host/proj"), dry_run=False
+            )
+        finally:
+            sbx_run.run_capture = original
+
+        self.assertEqual(result, "/home/user/proj")
+        self.assertEqual(len(calls), 2)
+
+    def test_absolute_inspect_result_is_accepted_without_further_probes(self):
+        calls = []
+
+        def fake_run_capture(argv):
+            calls.append(argv)
+            if argv[:2] == ["sbx", "inspect"]:
+                return 0, '{"workspace": "/sandbox/proj"}'
+            raise AssertionError(f"unexpected call: {argv}")
+
+        original = sbx_run.run_capture
+        sbx_run.run_capture = fake_run_capture
+        try:
+            result = sbx_run.sandbox_workspace_path(
+                "claude-ssh", Path("/host/proj"), dry_run=False
+            )
+        finally:
+            sbx_run.run_capture = original
+
+        self.assertEqual(result, "/sandbox/proj")
+        self.assertEqual(len(calls), 1)
+
+
 class TestAttachDryRun(unittest.TestCase):
     def _run(self, argv):
         import io
@@ -363,6 +422,74 @@ class TestStopDryRun(unittest.TestCase):
         _, stop_out = self._run(["stop", "--dry-run", "--mode", "ssh", "--no-kit"])
         self.assertIn("claude-ssh", run_out)
         self.assertIn("sbx stop claude-ssh", stop_out)
+
+
+class TestPrintCleanupHint(unittest.TestCase):
+    """The printed `stop` command must resolve to the sandbox actually named
+    in the message above it -- i.e. round-trip through build_parser() and
+    sandbox_name() back to the same name."""
+
+    def _printed_command(self, out: str) -> str:
+        for line in out.splitlines():
+            line = line.strip()
+            if line.startswith("./sbx_run.py"):
+                return line
+        raise AssertionError(f"no printed command found in: {out!r}")
+
+    def _round_trip_name(self, printed_command: str) -> str:
+        # Strip the leading "./sbx_run.py" token; the rest are argparse args.
+        import shlex as _shlex
+
+        tokens = _shlex.split(printed_command)[1:]
+        args = sbx_run.build_parser().parse_args(tokens)
+        return sbx_run.sandbox_name(args)
+
+    def _capture(self, args: argparse.Namespace, name: str) -> str:
+        import io
+        import contextlib
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            sbx_run.print_cleanup_hint(args, name)
+        return buf.getvalue()
+
+    def test_name_present_round_trips_to_the_same_sandbox(self):
+        args = sbx_run.build_parser().parse_args(
+            ["--mode", "ssh", "--name", "my-sandbox"]
+        )
+        name = sbx_run.sandbox_name(args)
+        out = self._capture(args, name)
+        printed = self._printed_command(out)
+        self.assertIn("--name my-sandbox", printed)
+        self.assertEqual(self._round_trip_name(printed), name)
+        self.assertEqual(name, "my-sandbox")
+
+    def test_name_absent_default_mode_and_kit_round_trips(self):
+        args = sbx_run.build_parser().parse_args([])
+        name = sbx_run.sandbox_name(args)
+        out = self._capture(args, name)
+        printed = self._printed_command(out)
+        self.assertEqual(self._round_trip_name(printed), name)
+
+    def test_name_absent_ssh_no_kit_round_trips(self):
+        args = sbx_run.build_parser().parse_args(["--mode", "ssh", "--no-kit"])
+        name = sbx_run.sandbox_name(args)
+        out = self._capture(args, name)
+        printed = self._printed_command(out)
+        self.assertIn("--mode ssh", printed)
+        self.assertIn("--no-kit", printed)
+        self.assertEqual(self._round_trip_name(printed), name)
+
+    def test_name_absent_vscode_mcp_round_trips(self):
+        args = sbx_run.build_parser().parse_args(
+            ["--mode", "vscode", "--mcp", "mslearn"]
+        )
+        name = sbx_run.sandbox_name(args)
+        out = self._capture(args, name)
+        printed = self._printed_command(out)
+        self.assertIn("--mode vscode", printed)
+        self.assertIn("--mcp mslearn", printed)
+        self.assertEqual(self._round_trip_name(printed), name)
 
 
 if __name__ == "__main__":

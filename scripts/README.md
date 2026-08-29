@@ -32,8 +32,12 @@ mount the repository root.
 
 ## Cleanup
 
-None of these scripts remove their sandbox. A sandbox left running keeps
-consuming resources, so stop and remove it when you are finished:
+`20_docker_sbx_claude_nokit.sh`, `21_docker_sbx_claude_mcp.sh` and
+`30_docker_sbx_claude_custom_kit.sh` end with an interactive
+`Delete sandbox …? [y/N]` prompt that stops and removes the sandbox if you
+answer yes. The rest never remove anything. Either way, a sandbox left
+running keeps consuming resources, so stop and remove it when you are
+finished:
 
 ```console
 $ sbx stop <name>

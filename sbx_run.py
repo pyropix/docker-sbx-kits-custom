@@ -78,7 +78,7 @@ def build_exec_argv(name: str) -> list[str]:
 
 
 def build_ssh_argv(name: str, sandbox_path: str) -> list[str]:
-    return ["ssh", "-t", alias_for(name), f"cd {sandbox_path} ; bash --login"]
+    return ["ssh", "-t", alias_for(name), f"cd {shlex.quote(sandbox_path)} ; bash --login"]
 
 
 def build_vscode_argv(code_exe: str, name: str, sandbox_path: str) -> list[str]:
@@ -219,12 +219,17 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 def print_cleanup_hint(args: argparse.Namespace, name: str) -> None:
     flags = []
-    if args.mode != "run":
-        flags += ["--mode", args.mode]
-    if args.no_kit:
-        flags.append("--no-kit")
-    if args.mcp:
-        flags += ["--mcp", args.mcp]
+    if args.name:
+        # --name alone determines the sandbox; the other flags would be
+        # redundant (and could even mismatch it), so it wins outright.
+        flags += ["--name", args.name]
+    else:
+        if args.mode != "run":
+            flags += ["--mode", args.mode]
+        if args.no_kit:
+            flags.append("--no-kit")
+        if args.mcp:
+            flags += ["--mcp", args.mcp]
     print(
         f"\nSandbox '{name}' may still be running. To remove it:\n"
         f"  ./sbx_run.py stop --rm {' '.join(flags)}".rstrip()
@@ -291,7 +296,11 @@ def sandbox_workspace_path(name: str, host_workspace: Path, dry_run: bool) -> st
     rc, out = run_capture(["sbx", "inspect", name])
     if rc == 0:
         found = parse_inspect_workspace(out)
-        if found:
+        # Same sanity check as the exec probe below: `sbx inspect` is
+        # host-side data, so a non-absolute candidate is most plausibly the
+        # *host* path (e.g. a Windows path), not the sandbox-side one this
+        # probe exists to find. Fall through rather than guess.
+        if found and found.startswith("/"):
             return found
 
     rc, out = run_capture(["sbx", "exec", name, "sh", "-c", "echo $WORKSPACE_DIR"])
