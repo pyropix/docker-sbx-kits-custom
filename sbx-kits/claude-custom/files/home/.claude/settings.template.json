@@ -49,5 +49,18 @@
     "skipAutoPermissionPrompt": true,
     "companyAnnouncements": [
         "Welcome to the Claude Code sandbox for development and testing!"
-    ]
+    ],
+    "hooks": {
+        "PostToolUse": [
+            {
+                "matcher": "Write|Edit|MultiEdit",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "/home/agent/.claude/hooks/prettier-format.sh"
+                    }
+                ]
+            }
+        ]
+    }
 }
