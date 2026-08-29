@@ -25,30 +25,77 @@ A `mixin` kit (`sbx-kits/claude-custom/spec.yaml`) that layers onto the built-in
 
 See `sbx-kits/claude-custom/README.md` for full details.
 
-## Helper scripts
+## Prerequisites
 
-Run these from the repository root. Each script mounts the current working directory
-into the sandbox and, where applicable, prompts to clean up the sandbox afterward.
+- [`uv`](https://docs.astral.sh/uv/) — supplies the Python interpreter for the
+  scripts below. Install with `curl -LsSf https://astral.sh/uv/install.sh | sh`
+  on Linux and macOS, or `winget install astral-sh.uv` on Windows.
+- `sbx` itself is installed by `sbx_setup.py`.
 
-| Script                                          | Purpose                                                      |
-| ----------------------------------------------- | ------------------------------------------------------------ |
-| `00_docker_sbx_setup.sh`                        | Install `docker-sbx`, configure KVM access, and `sbx login`. |
-| `10_docker_sbx_secret_gh.sh`                    | Store a GitHub token as an `sbx` secret.                     |
-| `20_docker_sbx_claude_nokit.sh`                 | Run Claude Code with no custom kit.                          |
-| `21_docker_sbx_claude_mcp.sh`                   | Run Claude Code with the Microsoft Learn MCP server.         |
-| `22_docker_sbx_claude_ssh.sh`                   | Create a sandbox and SSH into it.                            |
-| `23_docker_sbx_claude_ssh_vscode.sh`            | Open a sandbox in VS Code over Remote-SSH.                   |
-| `30_docker_sbx_claude_custom_kit.sh`            | Run Claude Code with the `claude-custom` kit.                |
-| `31_docker_sbx_claude_custom_kit_bash.sh`       | Open a bash shell in a running custom-kit sandbox.           |
-| `32_docker_sbx_claude_custom_kit_ssh.sh`        | Create a custom-kit sandbox and SSH into it.                 |
-| `33_docker_sbx_claude_custom_kit_ssh_vscode.sh` | Open a custom-kit sandbox in VS Code over Remote-SSH.        |
+## `sbx_setup.py` — one-time host setup
+
+Installs the `sbx` CLI for the current platform and signs in.
+
+| Flag | Effect |
+| ---- | ------ |
+| `--secret-gh` | Store a GitHub token (`gh auth token`) as an `sbx` secret. |
+| `--platform linux\|windows\|darwin` | Override platform detection. |
+| `--dry-run` | Print the commands instead of running them. |
+
+On Linux the `kvm` group membership only takes effect in a new login session,
+so log out and back in after the install. This step cannot be automated:
+`newgrp kvm` spawns a replacement shell that exits immediately.
+
+## `sbx_run.py` — launch a sandbox
+
+Runs Claude Code in a sandbox with the current directory mounted. The sandbox
+name is derived from the kit, MCP and mode you select, so the same command
+always reaches the same sandbox.
+
+| Flag | Effect |
+| ---- | ------ |
+| `--mode run` | Run Claude Code in the sandbox (default). |
+| `--mode bash` | Open a bash shell in the sandbox `--mode run` created. |
+| `--mode ssh` | Create the sandbox, register an SSH alias, and connect. |
+| `--mode vscode` | Same, then open VS Code over Remote-SSH. |
+| `--no-kit` | Use the plain `claude` agent instead of the `claude-custom` kit. |
+| `--mcp mslearn` | Attach the Microsoft Learn MCP server. |
+| `--mcp NAME --mcp-url URL` | Attach any other MCP server. |
+| `--workspace PATH` | Mount some other directory (default: the current one). |
+| `--name NAME` | Override the derived sandbox name. |
+| `--dry-run` | Print the commands instead of running them. |
+
+`sbx_run.py stop [--rm]` stops the sandbox the same flags would launch, and
+with `--rm` removes it. Sandboxes are not cleaned up automatically; the script
+prints the exact `stop` command when a session ends.
+
+`--mode vscode` requires the "Remote - SSH" extension in VS Code.
+
+## Invocation
+
+On Linux and macOS the PEP 723 shebang makes the scripts directly executable:
+
+```console
+$ ./sbx_run.py --mode ssh
+```
+
+Windows has no shebang mechanism, so invoke `uv` explicitly:
+
+```console
+> uv run sbx_run.py --mode ssh
+```
 
 ## Quick start
 
 ```console
-$ ./00_docker_sbx_setup.sh                 # one-time host setup
-$ ./30_docker_sbx_claude_custom_kit.sh     # run Claude Code with the custom kit
+$ uv run sbx_setup.py          # one-time host setup
+$ ./sbx_run.py                 # Claude Code with the custom kit
 ```
+
+## Bash scripts
+
+The original bash helper scripts remain in [`scripts/`](scripts/README.md) as a
+fallback for hosts without `uv`. They are frozen at their current feature set.
 
 ## Known issues
 
