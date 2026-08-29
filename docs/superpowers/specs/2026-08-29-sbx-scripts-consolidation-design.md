@@ -146,7 +146,9 @@ common case (`30_docker_sbx_claude_custom_kit.sh` today).
 `run`", and a bare `./sbx_run.py` is the most frequent invocation. The
 consequence is that both commands share one flag namespace: `stop` accepts
 `--mode`, `--no-kit`, `--name` and `--mcp` so that it can derive the same
-name the corresponding `run` produced, and ignores the rest.
+name the corresponding `run` produced, and ignores the rest. `--workspace`
+in particular is meaningless for `stop` — name derivation does not consume
+it — and is silently ignored rather than rejected.
 
 ### Internal structure
 
@@ -273,8 +275,14 @@ purpose.
 **The mounted workspace defaults to the current working directory.**
 
 ```python
+# in cmd_run, the commands layer -- not in the argv builder
 workspace = Path(args.workspace).expanduser().resolve() if args.workspace else Path.cwd()
 ```
+
+`Path.cwd()` is read in the commands layer and passed into the argv
+builder as a parameter. The builder stays pure, so tests can assert argv
+for any workspace without depending on the test process's working
+directory.
 
 This preserves today's behaviour: the scripts sandbox whatever project you
 are standing in. `--workspace <path>` is an optional override for mounting
@@ -429,8 +437,10 @@ All ten `.sh` files move from the repository root into `scripts/`, using
 today's feature parity, with paths and the `30`/`31` defect fixed:
 
 - The `--kit` argument becomes `"$REPO_ROOT/sbx-kits/claude-custom/"`, with
-  `REPO_ROOT` derived as shown in "Workspace resolution". A bare `../` would
-  work only from inside `scripts/`.
+  `REPO_ROOT` derived as shown under "The bash scripts anchor both to the
+  repository root" in "Workspace resolution". Note that the Python
+  derivation in that section is deliberately different and does not apply
+  here. A bare `../` would work only from inside `scripts/`.
 - The workspace argument becomes `"$REPO_ROOT"` in place of `"$(pwd)"`.
 - `31_docker_sbx_claude_custom_kit_bash.sh` is corrected to exec into
   `claude-custom-kit`, the name `30` actually creates. The defect is fixed
