@@ -15,6 +15,7 @@ permissions:
       - "security.ubuntu.com:80"       # Ubuntu security updates (amd64, HTTP)
       - "ports.ubuntu.com:80"          # Ubuntu archive/security (arm64, HTTP)
       - "download.docker.com:443"      # Docker's apt repo, pre-added by shell-docker
+      - "registry.npmjs.org:443"       # npm registry for global package installs
 
 security:
   privileged: false
@@ -24,6 +25,9 @@ setup:
     - command: apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends fd-find git-secrets nano tmux && rm -rf /var/lib/apt/lists/*
       user: "0"
       description: "Update apt index, upgrade installed packages, and install additional tools"
+    - command: npm install -g prettier
+      user: "0"
+      description: "Install prettier globally for post-tool-use file formatting"
     - command: |
         set -euo pipefail
         claude update
@@ -34,6 +38,7 @@ setup:
         mkdir -p /home/agent/.claude
         mv /home/agent/.claude/settings.template.json /home/agent/.claude/settings.json
         chmod +x /home/agent/.claude/statusline.sh
+        chmod +x /home/agent/.claude/hooks/prettier-format.sh
         chown -R agent:agent /home/agent/.claude
       user: "0"
       description: Copy the shipped settings.template.json (statusLine already baked in) into a temp file and atomically replace the sandbox's settings.json, overwriting the base image's; ensure statusline.sh is executable
