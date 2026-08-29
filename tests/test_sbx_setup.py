@@ -119,6 +119,37 @@ class TestDryRun(unittest.TestCase):
         self.assertNotIn("docker-sbx", out)
 
 
+class TestConfirmPlan(unittest.TestCase):
+    def test_dry_run_does_not_prompt(self):
+        import unittest.mock
+
+        with unittest.mock.patch("builtins.input") as mock_input:
+            rc, _ = TestDryRun()._run(["--dry-run", "--platform", "linux"])
+        mock_input.assert_not_called()
+
+    def test_declining_aborts_before_any_command_runs(self):
+        import unittest.mock
+
+        with unittest.mock.patch("builtins.input", return_value="n"):
+            with unittest.mock.patch.object(sbx_setup.subprocess, "run") as run:
+                rc = sbx_setup.do_install("linux", dry_run=False)
+        run.assert_not_called()
+        self.assertNotEqual(rc, 0)
+
+    def test_yes_flag_skips_the_prompt(self):
+        import unittest.mock
+
+        completed = unittest.mock.Mock(returncode=0)
+        with unittest.mock.patch("builtins.input") as mock_input:
+            with unittest.mock.patch.object(sbx_setup.shutil, "which", return_value="/usr/bin/x"):
+                with unittest.mock.patch.object(
+                    sbx_setup.subprocess, "run", return_value=completed
+                ):
+                    rc = sbx_setup.do_install("linux", dry_run=False, assume_yes=True)
+        mock_input.assert_not_called()
+        self.assertEqual(rc, 0)
+
+
 class TestNormaliseExit(unittest.TestCase):
     def test_signal_codes_become_128_plus_signal(self):
         self.assertEqual(sbx_setup.normalise_exit(-15), 143)
