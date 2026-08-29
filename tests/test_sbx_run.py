@@ -222,8 +222,8 @@ class TestParser(unittest.TestCase):
 
 class TestDryRun(unittest.TestCase):
     def test_dry_run_prints_and_does_not_execute(self):
-        import io
         import contextlib
+        import io
 
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
@@ -232,8 +232,8 @@ class TestDryRun(unittest.TestCase):
         self.assertIn("definitely-not-a-real-binary", buf.getvalue())
 
     def test_dry_run_of_run_mode_emits_the_full_command(self):
-        import io
         import contextlib
+        import io
 
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
@@ -247,8 +247,8 @@ class TestDryRun(unittest.TestCase):
     def test_dry_run_kit_path_is_independent_of_the_workspace(self):
         """Regression guard: the kit must not be resolved relative to the
         mounted workspace."""
-        import io
         import contextlib
+        import io
 
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
@@ -256,8 +256,8 @@ class TestDryRun(unittest.TestCase):
         self.assertIn(str(sbx_run.KIT_DIR), buf.getvalue())
 
     def test_dry_run_bash_mode_targets_the_run_sandbox(self):
-        import io
         import contextlib
+        import io
 
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
@@ -365,8 +365,8 @@ class TestSandboxWorkspacePathProbeChain(unittest.TestCase):
 
 class TestAttachDryRun(unittest.TestCase):
     def _run(self, argv):
-        import io
         import contextlib
+        import io
 
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
@@ -396,8 +396,8 @@ class TestAttachDryRun(unittest.TestCase):
 
 class TestStopDryRun(unittest.TestCase):
     def _run(self, argv):
-        import io
         import contextlib
+        import io
 
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
@@ -445,8 +445,8 @@ class TestPrintCleanupHint(unittest.TestCase):
         return sbx_run.sandbox_name(args)
 
     def _capture(self, args: argparse.Namespace, name: str) -> str:
-        import io
         import contextlib
+        import io
 
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
