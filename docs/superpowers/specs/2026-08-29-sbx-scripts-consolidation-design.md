@@ -132,7 +132,7 @@ substantially beyond twenty lines.
 ./sbx_run.py --mode bash         # sbx exec -it <name> bash
 ./sbx_run.py --mcp mslearn       # add and attach an MCP server
 ./sbx_run.py --name my-sandbox   # override the derived name
-./sbx_run.py --workspace ~/proj  # mount some other directory
+./sbx_run.py --workspace ~/proj  # mount some other directory (default: cwd)
 ./sbx_run.py --dry-run           # print commands instead of running them
 ./sbx_run.py stop [--rm]         # stop, optionally remove
 ```
@@ -267,35 +267,50 @@ simplify if warranted.
 
 ### Workspace resolution
 
-The mounted workspace defaults to the **repository root**, resolved from
-the script's own location rather than from the invocation directory:
+Two different paths are resolved here, and they anchor differently on
+purpose.
+
+**The mounted workspace defaults to the current working directory.**
 
 ```python
-REPO_ROOT = Path(__file__).resolve().parent          # sbx_run.py sits at the root
+workspace = Path(args.workspace).expanduser().resolve() if args.workspace else Path.cwd()
 ```
+
+This preserves today's behaviour: the scripts sandbox whatever project you
+are standing in. `--workspace <path>` is an optional override for mounting
+some other directory without `cd`-ing to it first. The path is resolved to
+an absolute one before being handed to `sbx`, so a relative `--workspace
+../other-project` behaves predictably.
+
+**The kit path anchors to the script's own location, not the workspace.**
+
+```python
+KIT = Path(__file__).resolve().parent / "sbx-kits" / "claude-custom"
+```
+
+The distinction matters: `./sbx_run.py` invoked from an unrelated project
+must still find the kit in *this* repository. A workspace-relative or
+`$(pwd)`-relative kit path — which is what `--kit ./sbx-kits/claude-custom/`
+does today — silently breaks the moment the script is called from anywhere
+but the repository root.
+
+**The bash scripts anchor both to the repository root.**
 
 ```bash
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # scripts/*.sh
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ```
 
-Deriving from the script location rather than `$(pwd)` or a literal
-`$(pwd)/..` means both interfaces mount the same directory no matter where
-they are invoked from. A literal `$(pwd)/..` in `scripts/` would be correct
-only when the caller has already `cd`-ed into `scripts/`, and would mount
-the repository's *parent* when run from the root — which is the more
-natural invocation.
+They mount `"$REPO_ROOT"` and pass `--kit "$REPO_ROOT/sbx-kits/claude-custom/"`.
+Deriving `REPO_ROOT` from `${BASH_SOURCE[0]}` rather than a literal
+`$(pwd)/..` makes this independent of the invocation directory: a literal
+`$(pwd)/..` would be correct only after `cd scripts/`, and would mount the
+repository's *parent* when run from the root.
 
-This is a deliberate change from the current behaviour, where the scripts
-mount `$(pwd)`, whatever that happens to be. Pinning to the repository root
-makes the two interfaces agree and matches how the scripts are actually
-used: sandboxing work on this repository's kits. `--workspace <path>` on
-`sbx_run.py` restores the ability to sandbox an arbitrary directory;
-`--workspace .` reproduces the old behaviour exactly.
-
-The kit path is resolved the same way — `REPO_ROOT / "sbx-kits" /
-"claude-custom"` in Python, `"$REPO_ROOT/sbx-kits/claude-custom/"` in bash
-— so the relative `./sbx-kits/...` in the current scripts becomes
-location-independent rather than merely gaining a `../`.
+This leaves the two interfaces with different workspace defaults — cwd for
+Python, repository root for bash. In the common case they agree, since the
+scripts are run from the repository root. Where they diverge, the Python
+behaviour is the flexible one and the bash behaviour matches what those
+scripts did before the move.
 
 ### Cleanup
 
@@ -398,11 +413,10 @@ Coverage:
 - `--name` overriding the derived value.
 - `sbx_setup.py --dry-run --platform {linux,windows,darwin}` emitting the
   right command sequence for each, verifiable from a Linux host.
-- Workspace resolution defaulting to the repository root, and `--workspace`
-  overriding it.
-- The kit path resolving under the repository root rather than the
-  invocation directory — asserted by running `--dry-run` from a different
-  working directory.
+- Workspace defaulting to `Path.cwd()`, `--workspace` overriding it, and a
+  relative `--workspace` being resolved to an absolute path.
+- The kit path resolving next to the script rather than under the workspace
+  — asserted by building argv with a workspace far from the repository.
 
 Not covered by automated tests: TTY inheritance and the `WORKSPACE_DIR`
 probe, both of which require a real `sbx` installation. Verify manually on
