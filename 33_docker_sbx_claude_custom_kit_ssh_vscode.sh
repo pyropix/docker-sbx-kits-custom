@@ -19,8 +19,7 @@ sbx setup ssh --alias claude-custom-ssh-vscode.sbx
 ## Note: you have to install the "Remote - SSH" extension in VS Code for this to work.
 code --remote ssh-remote+claude-custom-ssh-vscode.sbx "$(pwd)"
 
-read -r -p "Delete sandbox claude-custom-ssh-vscode? [y/N] " answer
-if [[ "${answer,,}" =~ ^y ]]; then
-  sbx stop claude-custom-ssh-vscode
-  sbx rm claude-custom-ssh-vscode --force
-fi
+## Note: You have to manually stop the container when you are done with it.
+## Otherwise it will keep running in the background. You can do this by running:
+# sbx stop claude-custom-ssh-vscode
+# sbx rm claude-custom-ssh-vscode --force
