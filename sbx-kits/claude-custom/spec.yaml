@@ -22,7 +22,7 @@ security:
 
 setup:
   install:
-    - command: apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends fd-find git-secrets nano tmux && rm -rf /var/lib/apt/lists/*
+    - command: apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends fd-find git-secrets jq nano tmux && rm -rf /var/lib/apt/lists/*
       user: "0"
       description: "Update apt index, upgrade installed packages, and install additional tools"
     - command: npm install -g prettier
