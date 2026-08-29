@@ -492,5 +492,138 @@ class TestPrintCleanupHint(unittest.TestCase):
         self.assertEqual(self._round_trip_name(printed), name)
 
 
+class TestNormaliseExit(unittest.TestCase):
+    def test_zero_and_positive_pass_through(self):
+        self.assertEqual(sbx_run.normalise_exit(0), 0)
+        self.assertEqual(sbx_run.normalise_exit(1), 1)
+        self.assertEqual(sbx_run.normalise_exit(143), 143)
+
+    def test_signal_codes_become_128_plus_signal(self):
+        # -15 (SIGTERM) -> 143, not the 241 that sys.exit(-15) would yield.
+        self.assertEqual(sbx_run.normalise_exit(-15), 143)
+        self.assertEqual(sbx_run.normalise_exit(-2), 130)
+        self.assertEqual(sbx_run.normalise_exit(-9), 137)
+
+
+class TestCmdStop(unittest.TestCase):
+    """A failed `sbx stop` must not be masked by a following successful rm."""
+
+    def _run_with(self, argv, returns):
+        calls = []
+
+        def fake(cmd, dry_run=False):
+            calls.append(cmd)
+            return returns[cmd[1]]
+
+        original = sbx_run.run_interactive
+        sbx_run.run_interactive = fake
+        try:
+            args = sbx_run.build_parser().parse_args(argv)
+            rc = sbx_run.cmd_stop(args)
+        finally:
+            sbx_run.run_interactive = original
+        return rc, calls
+
+    def test_failed_stop_then_successful_rm_reports_failure(self):
+        rc, calls = self._run_with(["stop", "--rm"], {"stop": 3, "rm": 0})
+        self.assertEqual(rc, 3)
+        self.assertEqual([c[1] for c in calls], ["stop", "rm"])
+
+    def test_successful_stop_then_failed_rm_reports_failure(self):
+        rc, _ = self._run_with(["stop", "--rm"], {"stop": 0, "rm": 4})
+        self.assertEqual(rc, 4)
+
+    def test_both_succeed(self):
+        rc, _ = self._run_with(["stop", "--rm"], {"stop": 0, "rm": 0})
+        self.assertEqual(rc, 0)
+
+
+class TestEnsureMcpRegistered(unittest.TestCase):
+    def _patch(self, inspect_rc, add_rc=0):
+        capture_calls = []
+        interactive_calls = []
+
+        def fake_capture(argv):
+            capture_calls.append(argv)
+            return inspect_rc, ""
+
+        def fake_interactive(argv, dry_run=False):
+            interactive_calls.append(argv)
+            return add_rc
+
+        self._orig_cap = sbx_run.run_capture
+        self._orig_int = sbx_run.run_interactive
+        sbx_run.run_capture = fake_capture
+        sbx_run.run_interactive = fake_interactive
+        return capture_calls, interactive_calls
+
+    def _restore(self):
+        sbx_run.run_capture = self._orig_cap
+        sbx_run.run_interactive = self._orig_int
+
+    def test_already_registered_skips_add(self):
+        cap, inter = self._patch(inspect_rc=0)
+        try:
+            sbx_run.ensure_mcp_registered("mslearn", None, dry_run=False)
+        finally:
+            self._restore()
+        self.assertEqual(cap[0][:3], ["sbx", "mcp", "inspect"])
+        self.assertEqual(inter, [])
+
+    def test_missing_server_is_added(self):
+        cap, inter = self._patch(inspect_rc=1, add_rc=0)
+        try:
+            sbx_run.ensure_mcp_registered("mslearn", None, dry_run=False)
+        finally:
+            self._restore()
+        self.assertEqual(len(inter), 1)
+        self.assertEqual(inter[0][:3], ["sbx", "mcp", "add"])
+
+    def test_failed_add_exits_nonzero(self):
+        self._patch(inspect_rc=1, add_rc=5)
+        try:
+            with self.assertRaises(SystemExit) as ctx:
+                sbx_run.ensure_mcp_registered("mslearn", None, dry_run=False)
+        finally:
+            self._restore()
+        self.assertEqual(ctx.exception.code, 5)
+
+
+class TestSandboxWorkspaceInspectUsesJson(unittest.TestCase):
+    def test_inspect_probe_passes_json_flag(self):
+        calls = []
+
+        def fake_run_capture(argv):
+            calls.append(argv)
+            if argv[:2] == ["sbx", "inspect"]:
+                return 0, '{"workspace": "/sandbox/proj"}'
+            raise AssertionError(f"unexpected call: {argv}")
+
+        original = sbx_run.run_capture
+        sbx_run.run_capture = fake_run_capture
+        try:
+            result = sbx_run.sandbox_workspace_path(
+                "claude-ssh", Path("/host/proj"), dry_run=False
+            )
+        finally:
+            sbx_run.run_capture = original
+        self.assertEqual(result, "/sandbox/proj")
+        self.assertIn("--json", calls[0])
+
+
+class TestInvocationPrefix(unittest.TestCase):
+    def test_posix_uses_dot_slash(self):
+        import unittest.mock
+
+        with unittest.mock.patch.object(sbx_run.sys, "platform", "linux"):
+            self.assertEqual(sbx_run.invocation_prefix(), "./sbx_run.py")
+
+    def test_windows_uses_uv_run(self):
+        import unittest.mock
+
+        with unittest.mock.patch.object(sbx_run.sys, "platform", "win32"):
+            self.assertEqual(sbx_run.invocation_prefix(), "uv run sbx_run.py")
+
+
 if __name__ == "__main__":
     unittest.main()

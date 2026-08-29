@@ -1,59 +1,63 @@
 # Follow-ups from the sbx script consolidation
 
 Deferred findings from the task and whole-branch reviews of
-`feat/consolidate-sbx-scripts`. None blocked the merge. Recorded here because
-the review workspace that held them is deleted once the branch finishes.
+`feat/consolidate-sbx-scripts`. Most surfaced only on first real use against a
+live `sbx`, which could not be installed in the original development
+environment.
 
-Most of these surface only on first real use against a live `sbx`, which could
-not be installed in the development environment.
+Resolved on 2026-08-29, verified against a live `sbx` (daemon v0.39.0) on
+Linux. Items left open are recorded at the end with the reason.
 
-## Correctness, worth doing
+## Correctness — done
 
-- **`sbx_setup.py` has no `require_tool` equivalent.** `sbx_run.py` locates
-  `sbx` and `code` via `shutil.which` and exits with an actionable message.
-  `sbx_setup.py` does not, so `--secret-gh` on a host without `gh` raises a
-  bare `FileNotFoundError` traceback. The friendly "run `gh auth login` first"
-  message only fires when `gh` exists but is unauthenticated. Same gap for a
-  missing `sbx` or `brew`.
-- **Negative return codes break exit-code propagation.** A child killed by a
-  signal returns a negative code: `run_interactive(["bash","-c","kill -TERM $$"])`
-  yields `-15`, and `sys.exit(-15)` produces shell status 241 rather than 143.
-  Normalise with `128 + (-rc)` when negative.
-- **Neither `__main__` guard catches `KeyboardInterrupt`**, so Ctrl-C during a
-  sandbox TUI prints a traceback instead of exiting quietly.
-- **`cmd_stop` overwrites `rc`**, so a failed `sbx stop` followed by a
-  successful `sbx rm --force` exits 0.
-- **`ensure_mcp_registered` ignores `sbx mcp add`'s exit code.** A failed
-  registration surfaces later as an obscure `sbx run --static-mcp` failure.
+- **`sbx_setup.py` now has a `require_tool` guard.** `do_secret_gh` checks for
+  `gh` and `sbx`, and `do_install` checks the per-platform installer tools
+  (`curl`/`sudo`, `winget`, or `brew`) before shelling out, so a missing tool
+  gives an actionable message instead of a bare `FileNotFoundError`.
+- **Negative return codes are normalised.** Both scripts route their exit
+  through `normalise_exit`, mapping a signalled child's `-N` to `128 + N`
+  (SIGTERM `-15` -> `143`, not the `241` that `sys.exit(-15)` produced).
+  Verified with a real signalled child.
+- **Both `__main__` guards catch `KeyboardInterrupt`** and exit `130` quietly
+  instead of printing a traceback.
+- **`cmd_stop` no longer masks a failed `sbx stop`.** `rm` still always runs,
+  but the stop failure wins the exit code (`rc = rc or rm_rc`).
+- **`ensure_mcp_registered` honours `sbx mcp add`'s exit code**, exiting
+  (normalised) on failure rather than letting it surface later as an obscure
+  `--static-mcp` error.
 
-## Unverified against a live `sbx`
+## Verified against a live `sbx` — done
 
-- **`sbx mcp ls` membership test** uses `mcp in out.split()`, a token match over
-  the whole listing including URLs and headers. A short or generic server name
-  could false-positive and silently skip registration. Tighten once the real
-  output format is known.
-- **`--mcp` with `--mode ssh`/`vscode`** passes `--static-mcp` to `sbx create`.
-  The spec's mode table only shows that flag for `sbx run`. Fails loudly if
-  unsupported, so the risk is low.
-- **The kit path loses its trailing slash** (`.../claude-custom` where the bash
-  scripts pass `.../claude-custom/`). Almost certainly irrelevant, but it is an
-  unverified divergence from the form known to work.
-- **`sandbox_workspace_path` falls back to the host path** when both probes
-  fail. Correct on Linux, where host and sandbox paths coincide; on Windows it
-  would `cd` to a path that does not exist in the sandbox.
+- **MCP membership test tightened.** Replaced the `mcp in out.split()` token
+  match over `sbx mcp ls` with `sbx mcp inspect <name>`, which exits `0` iff the
+  server is registered — an exact per-server check with no false-positive risk.
+  Confirmed: `inspect mslearn` -> `0`, `inspect zzz-nope` -> `1`.
+- **`--mcp` with `--mode ssh`/`vscode` is valid.** `sbx create --help` lists
+  `--static-mcp`; both `create` and `run` accept it. No change needed.
+- **The kit path without a trailing slash works.** A real
+  `sbx create --kit .../claude-custom claude .` succeeded and `sbx inspect`
+  recorded the kit. The bash scripts' trailing slash was cosmetic.
+- **The `sbx inspect` workspace probe was broken and is fixed.** The code
+  parsed JSON but called `sbx inspect NAME`, whose default output is
+  human-readable text, so the probe always returned `None` and fell through to
+  the `sbx exec` probe (which needs a running sandbox). Now passes `--json`;
+  the `workspace` key the parser already knew is present. On Linux this returns
+  the host path, which equals the sandbox path; on Windows the host form fails
+  the `startswith("/")` check and correctly falls through to the exec probe.
 
-## Cosmetic
+## Cosmetic — done
 
-- **The cleanup hint always prints `./sbx_run.py ...`**, which is not the
-  documented Windows invocation (`uv run sbx_run.py ...`).
+- **The cleanup hint is now platform-aware.** `invocation_prefix()` prints
+  `./sbx_run.py` on POSIX and `uv run sbx_run.py` on Windows.
+
+## Left open, by design
+
 - **`scripts/31_docker_sbx_claude_custom_kit_bash.sh` assigns `REPO_ROOT` but
-  never uses it** — that script takes no path arguments. Left in place
-  deliberately: the bash scripts are frozen, and the variable is assigned but
-  not read, so `set -u` is unaffected.
+  never uses it.** The bash scripts are frozen; the variable is assigned but not
+  read, so `set -u` is unaffected. Left in place.
 - **Git recorded `31_..._bash.sh` as delete+create rather than a rename**
   (small file, similarity below git's default threshold). History is reachable
-  with `git log --follow -M20% -- scripts/31_docker_sbx_claude_custom_kit_bash.sh`;
-  plain `--follow` shows only the move commit.
+  with `git log --follow -M20% -- scripts/31_docker_sbx_claude_custom_kit_bash.sh`.
 - **Spec drift:** the spec's File-layout table names `tests/test_sbx.py`, but the
   branch ships `tests/test_sbx_run.py` and `tests/test_sbx_setup.py`. The split
   is the better arrangement; the spec line is stale.
