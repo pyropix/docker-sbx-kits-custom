@@ -101,6 +101,7 @@ Two scripts, split by lifecycle:
 | `sbx_run.py` | The kit × mode matrix, plus `stop`. |
 | `scripts/*.sh` | The ten original bash scripts, kept working. |
 | `tests/test_sbx.py` | Unit tests for the pure functions. |
+| `scripts/README.md` | Describes the bash scripts. |
 | `docs/superpowers/specs/` | This document. |
 | `sbx-kits/claude-custom/` | Unchanged. |
 
@@ -410,7 +411,8 @@ first run.
 ## Migration
 
 All ten `.sh` files move from the repository root into `scripts/`, using
-`git mv` so history follows them. They are **kept working**, not frozen:
+`git mv` so history follows them. They are **kept working** — frozen at
+today's feature parity, with paths and the `30`/`31` defect fixed:
 
 - The `--kit` argument becomes `"$REPO_ROOT/sbx-kits/claude-custom/"`, with
   `REPO_ROOT` derived as shown in "Workspace resolution". A bare `../` would
@@ -422,34 +424,6 @@ All ten `.sh` files move from the repository root into `scripts/`, using
 - The bash scripts keep their existing sandbox names. Renaming them to match
   the Python derivation would break anyone's running sandboxes for no gain,
   since the two interfaces are not meant to share sandboxes.
-
-The README's Quick start block still names the moved files:
-
-```console
-$ ./00_docker_sbx_setup.sh
-$ ./30_docker_sbx_claude_custom_kit.sh
-```
-
-Both paths break on the move, so Quick start becomes `uv run sbx_setup.py`
-followed by `./sbx_run.py`. The existing script table gains a `scripts/`
-prefix and is preceded by the new Python command table, with this
-equivalence mapping:
-
-| Bash script (in `scripts/`) | Python equivalent |
-| --- | --- |
-| `00_docker_sbx_setup.sh` | `uv run sbx_setup.py` |
-| `10_docker_sbx_secret_gh.sh` | `uv run sbx_setup.py --secret-gh` |
-| `20_docker_sbx_claude_nokit.sh` | `./sbx_run.py --no-kit` |
-| `21_docker_sbx_claude_mcp.sh` | `./sbx_run.py --no-kit --mcp mslearn` (sandbox `claude-mcp`) |
-| `22_docker_sbx_claude_ssh.sh` | `./sbx_run.py --no-kit --mode ssh` |
-| `23_docker_sbx_claude_ssh_vscode.sh` | `./sbx_run.py --no-kit --mode vscode` |
-| `30_docker_sbx_claude_custom_kit.sh` | `./sbx_run.py` |
-| `31_docker_sbx_claude_custom_kit_bash.sh` | `./sbx_run.py --mode bash` |
-| `32_docker_sbx_claude_custom_kit_ssh.sh` | `./sbx_run.py --mode ssh` |
-| `33_docker_sbx_claude_custom_kit_ssh_vscode.sh` | `./sbx_run.py --mode vscode` |
-
-The README also gains `uv` as a prerequisite, the Windows invocation form,
-and a note that the bash scripts remain available for hosts without `uv`.
 
 Because nothing is deleted, this migration is reversible: the Python
 scripts can be removed and `scripts/` moved back with no loss.
@@ -471,6 +445,76 @@ hand is a one-time cleanup:
 | `claude-custom-ssh-vscode` | `claude-custom-vscode` |
 
 `claude-mcp`, `claude-ssh` and `claude-custom-ssh` keep their names.
+
+## Documentation
+
+Documentation splits to follow the code, so that each README describes only
+what sits beside it.
+
+### `README.md` (repository root)
+
+Describes the two Python scripts and nothing else. The current "Helper
+scripts" table of ten bash scripts is removed from this file — it moves
+wholesale to `scripts/README.md`.
+
+Sections, in order:
+
+1. **Prerequisites** — gains `uv`, with install pointers for Linux, macOS
+   and Windows. `sbx` itself is installed by `sbx_setup.py`.
+2. **`sbx_setup.py`** — one-time host bootstrap. Documents `--secret-gh`,
+   `--dry-run`, `--platform`, and notes the log-out-and-back-in step that
+   `newgrp kvm` cannot perform.
+3. **`sbx_run.py`** — the day-to-day launcher. A short table of `--mode`
+   values, plus `--no-kit`, `--mcp`, `--name`, `--workspace`, `--dry-run`
+   and the `stop` command.
+4. **Invocation** — `./sbx_run.py ...` on Linux and macOS via the PEP 723
+   shebang; `uv run sbx_run.py ...` on Windows, which has no shebang
+   mechanism.
+5. **Quick start** — replaces the current block, whose paths both break on
+   the move:
+
+   ```console
+   $ uv run sbx_setup.py          # one-time host setup
+   $ ./sbx_run.py                 # Claude Code with the custom kit
+   ```
+
+6. One line pointing at `scripts/README.md` for the bash scripts, noting
+   they are the fallback for hosts without `uv`.
+
+The existing "What is a Docker Sandbox?", "The `claude-custom` kit",
+"Known issues" and "References" sections are unchanged.
+
+### `scripts/README.md` (new)
+
+Receives the ten-row helper-script table from the root README, with paths
+prefixed `scripts/` and the descriptions carried over as they stand. Adds:
+
+- A note at the top that these are the original bash scripts, kept as a
+  fallback for hosts without `uv`, frozen at current feature parity, and
+  that `../README.md` describes the maintained Python interface.
+- The equivalence mapping below, so a reader of either file can cross over.
+- The manual-cleanup instructions that scripts 22, 23, 32 and 33 carry in
+  comments, stated once in prose rather than repeated per script.
+
+| Bash script (in `scripts/`) | Python equivalent |
+| --- | --- |
+| `00_docker_sbx_setup.sh` | `uv run sbx_setup.py` |
+| `10_docker_sbx_secret_gh.sh` | `uv run sbx_setup.py --secret-gh` |
+| `20_docker_sbx_claude_nokit.sh` | `./sbx_run.py --no-kit` |
+| `21_docker_sbx_claude_mcp.sh` | `./sbx_run.py --no-kit --mcp mslearn` (sandbox `claude-mcp`) |
+| `22_docker_sbx_claude_ssh.sh` | `./sbx_run.py --no-kit --mode ssh` |
+| `23_docker_sbx_claude_ssh_vscode.sh` | `./sbx_run.py --no-kit --mode vscode` |
+| `30_docker_sbx_claude_custom_kit.sh` | `./sbx_run.py` |
+| `31_docker_sbx_claude_custom_kit_bash.sh` | `./sbx_run.py --mode bash` |
+| `32_docker_sbx_claude_custom_kit_ssh.sh` | `./sbx_run.py --mode ssh` |
+| `33_docker_sbx_claude_custom_kit_ssh_vscode.sh` | `./sbx_run.py --mode vscode` |
+
+The mapping lives in `scripts/README.md` rather than the root README
+because it is only of interest to someone already reading about the bash
+scripts. The root README stays a description of the current interface, not
+a migration document.
+
+
 
 ## Open items
 
