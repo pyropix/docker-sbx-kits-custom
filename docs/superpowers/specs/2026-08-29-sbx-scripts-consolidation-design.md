@@ -21,12 +21,17 @@ Cleanup handling is likewise inconsistent mid-refactor: scripts 20, 21 and
 30 prompt interactively with `read -r -p`, while 22, 23, 32 and 33 print
 manual-stop instructions in comments.
 
+Because the bash scripts are retained (see Migration), the matrix
+duplication that produced the `30`/`31` defect survives in bash by design.
+Freezing them at current feature parity is what bounds that risk: the
+instance is fixed, and no new modes are added there to drift again.
+
 ## Goals
 
 - One entry point per lifecycle, running natively on Linux, macOS and
   Windows.
-- Eliminate the kit × mode duplication so that adding a kit or a mode is a
-  single edit.
+- Eliminate the kit × mode duplication *in the Python interface*, so that
+  adding a kit or a mode there is a single edit.
 - Fix the `30`/`31` name mismatch structurally, not by hand.
 - Unify cleanup on the manual direction chosen in commit `a275cf2`.
 - Keep the bash scripts working, moved out of the repository root.
@@ -36,8 +41,12 @@ manual-stop instructions in comments.
 - Changing `sbx-kits/`. The `claude-custom` kit is untouched.
 - Packaging for PyPI. See "Invocation" for why `uvx` is out of scope.
 - Supporting agents other than `claude`.
-- Rewriting the bash scripts. They are moved and their paths fixed; their
-  structure is left alone.
+- Rewriting the bash scripts. They are moved, their paths fixed and the
+  `30`/`31` mismatch corrected; their structure is left alone.
+- Backporting future work to bash. The bash scripts are frozen at today's
+  feature parity. A new mode or kit is added to the Python scripts only.
+  "Kept working" means they continue to do what they do now, not that they
+  track the Python interface.
 
 ## Platform findings
 
@@ -91,6 +100,9 @@ Two scripts, split by lifecycle:
 | `sbx_setup.py` | One-time host bootstrap: platform-gated install, GitHub secret. |
 | `sbx_run.py` | The kit × mode matrix, plus `stop`. |
 | `scripts/*.sh` | The ten original bash scripts, kept working. |
+| `tests/test_sbx.py` | Unit tests for the pure functions. |
+| `docs/superpowers/specs/` | This document. |
+| `sbx-kits/claude-custom/` | Unchanged. |
 
 The Python scripts stay at the repository root as the primary entry point.
 The bash scripts move into `scripts/`, which both unclutters the root and
@@ -296,8 +308,9 @@ Sandbox 'claude-custom-ssh' is still running. To remove it:
 ```
 
 `stop` without `--rm` runs `sbx stop <name>`; with `--rm` it also runs
-`sbx rm <name> --force`. This replaces the four comment blocks in scripts
-22, 23, 32 and 33.
+`sbx rm <name> --force`. It gives the Python interface a first-class
+equivalent of the manual-stop comment blocks in scripts 22, 23, 32 and 33,
+which those scripts keep.
 
 ## `sbx_setup.py`
 
@@ -410,8 +423,17 @@ All ten `.sh` files move from the repository root into `scripts/`, using
   the Python derivation would break anyone's running sandboxes for no gain,
   since the two interfaces are not meant to share sandboxes.
 
-The README's script table gains a `scripts/` prefix and is preceded by the
-new Python command table, with this equivalence mapping:
+The README's Quick start block still names the moved files:
+
+```console
+$ ./00_docker_sbx_setup.sh
+$ ./30_docker_sbx_claude_custom_kit.sh
+```
+
+Both paths break on the move, so Quick start becomes `uv run sbx_setup.py`
+followed by `./sbx_run.py`. The existing script table gains a `scripts/`
+prefix and is preceded by the new Python command table, with this
+equivalence mapping:
 
 | Bash script (in `scripts/`) | Python equivalent |
 | --- | --- |
