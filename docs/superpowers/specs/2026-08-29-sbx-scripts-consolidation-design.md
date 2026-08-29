@@ -454,12 +454,15 @@ scripts can be removed and `scripts/` moved back with no loss.
 
 ### Orphaned sandboxes
 
-Four of the Python-derived names differ from the ones the bash scripts use.
-Since the bash scripts keep their names, the two interfaces create separate
-sandboxes for the same scenario. That is intentional — they can be run side
-by side without interfering — but it means switching to the Python scripts
-leaves the old sandboxes running. Listing with `sbx ls` and removing them by
-hand is a one-time cleanup:
+Four of the Python-derived names differ from the ones the bash scripts use,
+so for those four scenarios the two interfaces create separate sandboxes and
+can be run side by side without interfering. The other three scenarios
+(`--mcp mslearn`, and `--mode ssh` with and without the kit) derive exactly
+the sandbox name their bash counterpart uses, so those Python commands reach
+the same sandbox as the matching bash script rather than a separate one.
+Either way, switching to the Python scripts leaves any sandboxes created by
+the bash scripts running. Listing with `sbx ls` and removing them by hand is
+a one-time cleanup:
 
 | Bash sandbox | Python sandbox |
 | --- | --- |
