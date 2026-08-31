@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-set -euxo pipefail
+# Convenience wrapper for VS Code remote SSH to the no-kit sandbox.
+# Prefer: ./sbx_run.py --no-kit --mode vscode
+set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -17,9 +19,17 @@ fi
 # Setup SSH access to the sandbox
 sbx setup ssh --alias claude-ssh-vscode.sbx
 
+# Resolve the workspace path inside the sandbox (may differ from the host path).
+# SC2016: single quotes are intentional — $WORKSPACE_DIR is expanded by the sandbox shell.
+# shellcheck disable=SC2016
+sandbox_path=$(sbx exec claude-ssh-vscode sh -c 'echo "$WORKSPACE_DIR"' 2>/dev/null | tail -1)
+[ -z "$sandbox_path" ] && sandbox_path="$REPO_ROOT"
+
+echo "Opening VS Code remote to $sandbox_path..."
+
 # Run VS Code with remote SSH connection to the sandbox
 ## Note: you have to install the "Remote - SSH" extension in VS Code for this to work.
-code --remote ssh-remote+claude-ssh-vscode.sbx "$REPO_ROOT"
+code --remote ssh-remote+claude-ssh-vscode.sbx "$sandbox_path"
 
 ## Note: You have to manually stop the container when you are done with it.
 ## Otherwise it will keep running in the background. You can do this by running:

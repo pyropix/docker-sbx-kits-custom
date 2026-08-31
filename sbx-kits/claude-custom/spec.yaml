@@ -6,6 +6,9 @@ description: Claude Code agent with custom tools and pre-configured settings
 
 permissions:
   network:
+    # This mixin merges with the base `claude` agent's allow-list; entries here are
+    # additive. The base agent already allows api.anthropic.com and the Claude CDN.
+    # Entries below are specific to this kit's install steps:
     allow:
       - code.claude.com
       - docs.claude.com
@@ -15,24 +18,24 @@ permissions:
       - "security.ubuntu.com:80"       # Ubuntu security updates (amd64, HTTP)
       - "ports.ubuntu.com:80"          # Ubuntu archive/security (arm64, HTTP)
       - "download.docker.com:443"      # Docker's apt repo, pre-added by shell-docker
-      - "registry.npmjs.org:443"       # npm registry for global package installs
+      - "registry.npmjs.org:443"       # npm registry — needed for `npm install -g prettier`
 
 security:
   privileged: false
 
 setup:
   install:
-    - command: apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends fd-find git-secrets jq nano tmux && rm -rf /var/lib/apt/lists/*
+    - command: apt-get update && apt-get install -y --no-install-recommends fd-find git-secrets jq nano tmux && rm -rf /var/lib/apt/lists/*
       user: "0"
-      description: "Update apt index, upgrade installed packages, and install additional tools"
-    - command: npm install -g prettier
+      description: "Update apt index and install additional tools (fd-find, git-secrets, jq, nano, tmux)"
+    - command: npm install -g prettier@3
       user: "0"
-      description: "Install prettier globally for post-tool-use file formatting"
+      description: "Install prettier@3 globally for post-tool-use file formatting"
     - command: |
         set -euo pipefail
         claude update
       user: "1000"
-      description: Copy the shipped settings.template.json (statusLine already baked in) into a temp file and atomically replace the sandbox's settings.json, overwriting the base image's; ensure statusline.sh is executable
+      description: Update the Claude CLI to the latest version
     - command: |
         set -euo pipefail
         mkdir -p /home/agent/.claude
@@ -41,8 +44,8 @@ setup:
         chmod +x /home/agent/.claude/hooks/prettier-format.sh
         chown -R agent:agent /home/agent/.claude
       user: "0"
-      description: Copy the shipped settings.template.json (statusLine already baked in) into a temp file and atomically replace the sandbox's settings.json, overwriting the base image's; ensure statusline.sh is executable
+      description: Move settings.template.json into place as settings.json and ensure hook scripts are executable
   startup:
-    - command: ["sh", "-c", 'mv -f "${HOME}/CLAUDE.template.md" "${WORKSPACE_DIR}/../CLAUDE.md"']
+    - command: ["sh", "-c", '[ -f "${HOME}/CLAUDE.template.md" ] && mv -f "${HOME}/CLAUDE.template.md" "${WORKSPACE_DIR}/../CLAUDE.md" || true']
       user: "1000"
-      description: Remove the CLAUDE.md file to avoid confusion with the sandbox's README.md
+      description: Install the sandbox CLAUDE.md next to the workspace (idempotent; no-op if already moved on a prior start)

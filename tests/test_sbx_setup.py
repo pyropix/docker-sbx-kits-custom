@@ -49,19 +49,13 @@ class TestBuildSetupCommands(unittest.TestCase):
         rendered = self._rendered("windows")
         self.assertIn("winget install -h Docker.sbx", rendered)
         self.assertIn("sbx login", rendered)
-        self.assertTrue(
-            any("HypervisorPlatform" in r for r in rendered),
-            "the hypervisor check must be present",
-        )
 
-    def test_windows_hypervisor_check_tolerates_failure(self):
-        """Get-WindowsOptionalFeature needs elevation; a failure there must
-        not abort the install."""
-        cmds = sbx_setup.build_setup_commands("windows", "agent")
-        check = next(
-            c for c in cmds if "HypervisorPlatform" in " ".join(c.args)
-        )
-        self.assertTrue(check.tolerate_failure)
+    def test_windows_has_no_runtime_hypervisor_check(self):
+        """The Hypervisor Platform prerequisite is documented in the README
+        rather than checked at runtime (a non-elevated process cannot reliably
+        detect whether the feature is enabled and cannot abort meaningfully)."""
+        rendered = self._rendered("windows")
+        self.assertFalse(any("HypervisorPlatform" in r for r in rendered))
 
     def test_darwin_sequence(self):
         self.assertEqual(
@@ -124,7 +118,7 @@ class TestConfirmPlan(unittest.TestCase):
         import unittest.mock
 
         with unittest.mock.patch("builtins.input") as mock_input:
-            rc, _ = TestDryRun()._run(["--dry-run", "--platform", "linux"])
+            _rc, _ = TestDryRun()._run(["--dry-run", "--platform", "linux"])
         mock_input.assert_not_called()
 
     def test_declining_aborts_before_any_command_runs(self):
@@ -173,9 +167,7 @@ class TestRequireTool(unittest.TestCase):
     def test_present_tool_returns_path(self):
         import unittest.mock
 
-        with unittest.mock.patch.object(
-            sbx_setup.shutil, "which", return_value="/usr/bin/gh"
-        ):
+        with unittest.mock.patch.object(sbx_setup.shutil, "which", return_value="/usr/bin/gh"):
             self.assertEqual(sbx_setup.require_tool("gh", "hint"), "/usr/bin/gh")
 
 
@@ -191,6 +183,18 @@ class TestRequiredInstallTools(unittest.TestCase):
     def test_linux_requires_curl_and_sudo(self):
         names = [n for n, _ in sbx_setup.required_install_tools("linux")]
         self.assertEqual(names, ["curl", "sudo"])
+
+
+class TestSecretGhPlatformConflict(unittest.TestCase):
+    """#13: --secret-gh --platform <other> must be rejected, not silently ignored."""
+
+    def test_secret_gh_with_platform_is_an_error(self):
+        with self.assertRaises(SystemExit):
+            sbx_setup.main(["--secret-gh", "--platform", "windows"])
+
+    def test_secret_gh_without_platform_is_accepted(self):
+        rc, _ = TestDryRun()._run(["--dry-run", "--secret-gh"])
+        self.assertEqual(rc, 0)
 
 
 class TestSecretGhToolChecks(unittest.TestCase):
@@ -212,6 +216,59 @@ class TestSecretGhToolChecks(unittest.TestCase):
         with unittest.mock.patch.object(sbx_setup.shutil, "which", return_value=None):
             rc = sbx_setup.do_secret_gh(dry_run=True)
         self.assertEqual(rc, 0)
+
+
+class TestSharedHelperIdentity(unittest.TestCase):
+    """#13: normalise_exit and require_tool are copy-pasted into both scripts
+    for PEP 723 single-file portability. This test catches drift."""
+
+    def test_normalise_exit_behavior_is_identical(self):
+        import sbx_run
+
+        for rc in (0, 1, 127, -2, -9, -15):
+            self.assertEqual(
+                sbx_setup.normalise_exit(rc),
+                sbx_run.normalise_exit(rc),
+                f"normalise_exit({rc}) differs between sbx_setup and sbx_run",
+            )
+
+    def test_require_tool_behavior_is_identical(self):
+        import unittest.mock
+
+        import sbx_run
+
+        for module in (sbx_setup, sbx_run):
+            with unittest.mock.patch.object(module.shutil, "which", return_value=None):
+                with self.assertRaises(SystemExit) as ctx:
+                    module.require_tool("missing", "install it")
+            self.assertIn("missing", str(ctx.exception))
+            self.assertIn("install it", str(ctx.exception))
+
+        for module in (sbx_setup, sbx_run):
+            with unittest.mock.patch.object(module.shutil, "which", return_value="/usr/bin/x"):
+                result = module.require_tool("x", "hint")
+            self.assertEqual(result, "/usr/bin/x")
+
+
+class TestDoInstallFailurePath(unittest.TestCase):
+    """#14: a mid-sequence non-tolerated command failure must abort do_install."""
+
+    def test_non_tolerated_failure_aborts_sequence(self):
+        call_count = []
+
+        def fake_interactive(cmd, dry_run=False):
+            call_count.append(cmd)
+            return 1  # every command fails
+
+        original = sbx_setup.run_interactive
+        sbx_setup.run_interactive = fake_interactive
+        try:
+            rc = sbx_setup.do_install("linux", dry_run=False, assume_yes=True)
+        finally:
+            sbx_setup.run_interactive = original
+
+        self.assertNotEqual(rc, 0)
+        self.assertEqual(len(call_count), 1, "sequence must stop at first failure")
 
 
 if __name__ == "__main__":

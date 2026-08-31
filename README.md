@@ -16,7 +16,8 @@ settings, and permissions that is composed onto an agent at launch via `--kit`.
 A `mixin` kit (`sbx-kits/claude-custom/spec.yaml`) that layers onto the built-in
 `claude` agent and provides:
 
-- Extra CLI tools (`fd-find`, `git-secrets`, `nano`, `tmux`) and a `claude update`.
+- Extra CLI tools (`fd-find`, `git-secrets`, `jq`, `nano`, `tmux`; `jq` already ships in the
+  base image, the apt install is a defensive no-op) and a `claude update`.
 - A two-line Claude Code **status line** (`files/home/.claude/statusline.sh`) showing
   sandbox host, working directory, git branch, model, context usage, memory, load, and cost.
 - Pre-configured settings baked from `settings.template.json`.
@@ -39,7 +40,8 @@ Installs the `sbx` CLI for the current platform and signs in.
 | Flag                                | Effect                                                     |
 | ----------------------------------- | ---------------------------------------------------------- |
 | `--secret-gh`                       | Store a GitHub token (`gh auth token`) as an `sbx` secret. |
-| `--platform linux\|windows\|darwin` | Override platform detection.                               |
+| `--platform linux\|windows\|darwin` | Dry-run the plan for another platform.                     |
+| `--yes`, `-y`                       | Skip the confirmation prompt.                              |
 | `--dry-run`                         | Print the commands instead of running them.                |
 
 On Linux the `kvm` group membership only takes effect in a new login session,
@@ -63,6 +65,7 @@ always reaches the same sandbox.
 | `--mcp NAME --mcp-url URL` | Attach any other MCP server.                                     |
 | `--workspace PATH`         | Mount some other directory (default: the current one).           |
 | `--name NAME`              | Override the derived sandbox name.                               |
+| `--rm`                     | With `stop`: also remove the sandbox after stopping it.          |
 | `--dry-run`                | Print the commands instead of running them.                      |
 
 `sbx_run.py stop [--rm]` stops the sandbox the same flags would launch, and
@@ -97,12 +100,27 @@ $ ./sbx_run.py                 # Claude Code with the custom kit
 The original bash helper scripts remain in [`scripts/`](scripts/README.md) as a
 fallback for hosts without `uv`. They are frozen at their current feature set.
 
+## Development
+
+```console
+# Run tests
+python3 -m unittest discover -s .
+
+# Lint
+uvx ruff@0.16.5 check .
+uvx ruff@0.16.5 format --check .
+
+# ShellCheck
+shellcheck $(git ls-files '*.sh')
+```
+
 ## Known issues
 
-- **`apt-get install` step fails while the sandbox TUI is open.** The `claude-custom` kit's
-  install step that adds extra CLI tools via `apt-get` can fail when the sandbox TUI is
-  open. Close the TUI before (re)building the kit so the `apt-get install` step can
-  complete.
+See [`sbx-kits/claude-custom/README.md#known-issues`](sbx-kits/claude-custom/README.md#known-issues).
+
+## License
+
+[Apache 2.0](LICENSE)
 
 ## References
 

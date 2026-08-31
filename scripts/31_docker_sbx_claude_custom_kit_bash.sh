@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-set -euxo pipefail
+# Convenience wrapper for re-attaching to the custom-kit sandbox in bash mode.
+# Prefer: ./sbx_run.py --mode bash
+set -euo pipefail
 
-# Run with access to local workspace
+echo "Attaching to claude-custom-kit sandbox in bash mode..."
+
+# Re-attach to the running custom-kit sandbox (created by 30_docker_sbx_claude_custom_kit.sh)
 sbx exec -it claude-custom-kit bash

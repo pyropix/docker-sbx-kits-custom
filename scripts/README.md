@@ -63,11 +63,6 @@ Sandbox names are `claude-nokit`, `claude-mcp`, `claude-ssh`,
 | `32_docker_sbx_claude_custom_kit_ssh.sh` | `./sbx_run.py --mode ssh` |
 | `33_docker_sbx_claude_custom_kit_ssh_vscode.sh` | `./sbx_run.py --mode vscode` |
 
-Most of these pairs use different sandbox names and can be run side by side
-without interfering. Three do not: `./sbx_run.py --no-kit --mcp mslearn`,
-`./sbx_run.py --no-kit --mode ssh` and `./sbx_run.py --mode ssh` derive the
-same sandbox names as their bash counterparts (`claude-mcp`, `claude-ssh` and
-`claude-custom-ssh`), so running one of those Python commands reaches the
-same sandbox as the matching bash script instead of a separate one. Switching
-to the Python scripts leaves any other old sandboxes running — remove them
-once with `sbx ls` and `sbx rm`.
+Some Python-bash pairs derive the same sandbox name and will reach the same
+running sandbox rather than creating a separate one. Run `sbx ls` to see
+what is running before switching between the two interfaces.

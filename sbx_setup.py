@@ -68,15 +68,12 @@ def build_setup_commands(platform: str, user: str) -> list[Cmd]:
             Cmd(["sbx", "login"]),
         ]
     if platform == "windows":
+        # Prerequisite: Hyper-V / Hypervisor Platform must be enabled before
+        # running this script (Settings → Optional features → Hyper-V, or
+        # Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform).
+        # sbx will fail at launch if this feature is off, and there is no
+        # reliable way to detect it from a non-elevated process.
         return [
-            Cmd(
-                [
-                    "powershell", "-NoProfile", "-Command",
-                    "(Get-WindowsOptionalFeature -Online "
-                    "-FeatureName HypervisorPlatform).State",
-                ],
-                tolerate_failure=True,
-            ),
             Cmd(["winget", "install", "-h", "Docker.sbx"]),
             Cmd(["sbx", "login"]),
         ]
@@ -193,10 +190,13 @@ def do_secret_gh(dry_run: bool) -> int:
     require_tool("gh", "Install the GitHub CLI, then run 'gh auth login'.")
     require_tool("sbx", "Run 'uv run sbx_setup.py' to install it first.")
 
-    proc = subprocess.run(
-        ["gh", "auth", "token"], stdout=subprocess.PIPE, text=True
-    )
+    proc = subprocess.run(["gh", "auth", "token"], stdout=subprocess.PIPE, text=True)
     if proc.returncode != 0:
+        # Return the child's rc rather than sys.exit so the caller can
+        # distinguish "gh not logged in" from a programming error in this
+        # function; do_secret_gh is the only path that captures output and
+        # pipes it, so it reports errors this way while install steps use
+        # sys.exit (via require_tool) to abort the whole sequence.
         print("error: 'gh auth token' failed. Run 'gh auth login' first.", file=sys.stderr)
         return proc.returncode
 
@@ -223,20 +223,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--platform",
         choices=["linux", "windows", "darwin"],
-        help="override platform detection (for testing)",
+        help="override platform detection (dry-runs the plan for another platform)",
     )
     parser.add_argument(
         "--dry-run", action="store_true", help="print commands instead of running them"
     )
-    parser.add_argument(
-        "--yes", "-y", action="store_true", help="skip the confirmation prompt"
-    )
+    parser.add_argument("--yes", "-y", action="store_true", help="skip the confirmation prompt")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
     if args.secret_gh:
+        if args.platform:
+            parser.error("--platform has no effect with --secret-gh")
         return do_secret_gh(args.dry_run)
     platform = normalise_platform(args.platform) if args.platform else current_platform()
     return do_install(platform, args.dry_run, assume_yes=args.yes)

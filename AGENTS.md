@@ -7,6 +7,18 @@ The sbx custom kits are based on [sbx-kits-contrib](https://github.com/docker/sb
 
 Load skill [kit-author](https://github.com/docker/sbx-kits-contrib/tree/main/skills/kit-author) when adding new or improving existing sbx kits.
 
+> **Note:** this URL points to GitHub. If you are running inside a Docker Sandbox whose network allow-list does not include `github.com`, the skill may be unreachable. In that case, copy the skill text from the host or from a prior session and paste it into the conversation directly.
+
+## Running Tests
+
+From the repo root:
+
+```
+python3 -m unittest discover -s .
+```
+
+All tests live under `tests/`. Running `python3 -m unittest tests.test_X` (without `discover`) also works.
+
 ## Git Commit Guidelines
 
 Use conventional commit format.
