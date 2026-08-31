@@ -23,6 +23,11 @@ permissions:
 security:
   privileged: false
 
+environment:
+  variables:
+    LANG: C.UTF-8
+    LC_ALL: C.UTF-8
+
 setup:
   install:
     # - command: "install -m 0644 /home/agent/internal-ca.crt /usr/local/share/ca-certificates/internal-ca.crt && update-ca-certificates"
@@ -31,9 +36,6 @@ setup:
     - command: apt-get update && apt-get install -y --no-install-recommends fd-find git-secrets jq nano tmux && rm -rf /var/lib/apt/lists/*
       user: "0"
       description: "Update apt index and install additional tools (fd-find, git-secrets, jq, nano, tmux)"
-    - command: echo "LANG=C.UTF-8" >> /etc/environment
-      user: "0"
-      description: "Set a UTF-8 locale so tmux and other TUIs render box-drawing/glyph output correctly (no locales package needed; C.UTF-8 is built into glibc)"
     - command: npm install -g prettier@3
       user: "0"
       description: "Install prettier@3 globally for post-tool-use file formatting"
