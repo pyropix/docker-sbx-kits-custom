@@ -35,7 +35,7 @@ jobs:
       - name: ShellCheck
         run: shellcheck $(git ls-files '*.sh')
 
-  test:
+  test-matrix:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -49,3 +49,15 @@ jobs:
         run: pip install pyyaml
       - name: Run tests
         run: python3 -m unittest discover -s . -v
+
+  test:
+    needs: test-matrix
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check matrix result
+        run: |
+          if [ "${{ needs.test-matrix.result }}" != "success" ]; then
+            echo "test-matrix result: ${{ needs.test-matrix.result }}"
+            exit 1
+          fi
