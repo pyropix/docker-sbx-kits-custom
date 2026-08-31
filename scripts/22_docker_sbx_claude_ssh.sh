@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-set -euxo pipefail
+# Convenience wrapper for SSH access to the no-kit sandbox.
+# Prefer: ./sbx_run.py --no-kit --mode ssh
+set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -17,9 +19,16 @@ fi
 # Setup SSH access to the sandbox
 sbx setup ssh --alias claude-ssh.sbx
 
-# Run SSH into the sandbox with the current working directory mounted
-ssh -t claude-ssh.sbx  "cd $REPO_ROOT ; bash --login"
+# Resolve the workspace path inside the sandbox (may differ from the host path).
+# SC2016: single quotes are intentional — $WORKSPACE_DIR is expanded by the sandbox shell.
+# shellcheck disable=SC2016
+sandbox_path=$(sbx exec claude-ssh sh -c 'echo "$WORKSPACE_DIR"' 2>/dev/null | tail -1)
+[ -z "$sandbox_path" ] && sandbox_path="$REPO_ROOT"
 
+echo "Connecting via SSH to $sandbox_path..."
+
+# Run SSH into the sandbox
+ssh -t claude-ssh.sbx "cd $(printf '%q' "$sandbox_path") ; bash --login"
 
 ## Note: You have to manually stop the container when you are done with it.
 ## Otherwise it will keep running in the background. You can do this by running:
