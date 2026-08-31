@@ -30,9 +30,7 @@ class TestDeriveName(unittest.TestCase):
         self.assertEqual(sbx_run.derive_name(False, "mslearn", "run"), "claude-mcp")
 
     def test_mcp_composes_with_kit_and_mode(self):
-        self.assertEqual(
-            sbx_run.derive_name(True, "mslearn", "ssh"), "claude-custom-mcp-ssh"
-        )
+        self.assertEqual(sbx_run.derive_name(True, "mslearn", "ssh"), "claude-custom-mcp-ssh")
 
     def test_bash_and_run_derive_the_same_name(self):
         """Regression test for the 30/31 defect.
@@ -81,9 +79,14 @@ class TestBuildSbxArgv(unittest.TestCase):
         self.assertEqual(
             argv,
             [
-                "sbx", "run", "--name", "claude-custom",
-                "--kit", "/repo/sbx-kits/claude-custom",
-                "claude", "/home/user/proj",
+                "sbx",
+                "run",
+                "--name",
+                "claude-custom",
+                "--kit",
+                "/repo/sbx-kits/claude-custom",
+                "claude",
+                "/home/user/proj",
             ],
         )
 
@@ -92,9 +95,14 @@ class TestBuildSbxArgv(unittest.TestCase):
         self.assertEqual(
             argv,
             [
-                "sbx", "run", "--name", "claude-mcp",
-                "--static-mcp", "mslearn",
-                "claude", "/home/user/proj",
+                "sbx",
+                "run",
+                "--name",
+                "claude-mcp",
+                "--static-mcp",
+                "mslearn",
+                "claude",
+                "/home/user/proj",
             ],
         )
 
@@ -105,9 +113,7 @@ class TestBuildSbxArgv(unittest.TestCase):
     def test_flags_precede_agent_and_workspace_is_last(self):
         """Scripts 20 and 30 write `sbx run --name ... claude`; script 21 writes
         `sbx run claude --name ...`. The canonical form follows the majority."""
-        argv = sbx_run.build_sbx_argv(
-            "run", "n", Path("/k"), "mslearn", self.WORKSPACE
-        )
+        argv = sbx_run.build_sbx_argv("run", "n", Path("/k"), "mslearn", self.WORKSPACE)
         self.assertEqual(argv[-2:], ["claude", "/home/user/proj"])
         self.assertLess(argv.index("--name"), argv.index("claude"))
 
@@ -137,7 +143,9 @@ class TestOtherArgvBuilders(unittest.TestCase):
         self.assertEqual(
             sbx_run.build_ssh_argv("claude-ssh", "/home/u/My Project"),
             [
-                "ssh", "-t", "claude-ssh.sbx",
+                "ssh",
+                "-t",
+                "claude-ssh.sbx",
                 "cd '/home/u/My Project' ; bash --login",
             ],
         )
@@ -184,9 +192,7 @@ class TestResolveMcp(unittest.TestCase):
             sbx_run.resolve_mcp("something-else", None)
 
     def test_unknown_name_with_url_is_accepted(self):
-        self.assertEqual(
-            sbx_run.resolve_mcp("custom", "https://example.test/mcp"), "custom"
-        )
+        self.assertEqual(sbx_run.resolve_mcp("custom", "https://example.test/mcp"), "custom")
 
 
 class TestParser(unittest.TestCase):
@@ -266,9 +272,26 @@ class TestDryRun(unittest.TestCase):
 
 
 class TestParseInspectWorkspace(unittest.TestCase):
-    """The exact `sbx inspect` output format is unverified (no sbx available
-    at authoring time), so the parser is tolerant and returns None rather
-    than guessing when it does not recognise the shape."""
+    """The parser handles both the verified real-world format and several
+    plausible variants, returning None for anything it cannot recognise."""
+
+    # Real shape verified against `sbx inspect --json` on daemon v0.39.0.
+    REAL_INSPECT_JSON = """{
+      "name": "claude-custom",
+      "agent": "claude",
+      "kits": ["/repo/sbx-kits/claude-custom"],
+      "state": "stopped",
+      "workspace": "/home/user/proj",
+      "network": "claude-custom",
+      "sessions": 0
+    }"""
+
+    def test_real_sbx_inspect_json_shape(self):
+        """Verified against sbx daemon v0.39.0 (sbx inspect --json)."""
+        self.assertEqual(
+            sbx_run.parse_inspect_workspace(self.REAL_INSPECT_JSON),
+            "/home/user/proj",
+        )
 
     def test_json_workspace_key(self):
         self.assertEqual(
@@ -284,9 +307,7 @@ class TestParseInspectWorkspace(unittest.TestCase):
 
     def test_json_nested_under_a_parent_object(self):
         self.assertEqual(
-            sbx_run.parse_inspect_workspace(
-                '{"config": {"WorkspaceDir": "/work/proj"}}'
-            ),
+            sbx_run.parse_inspect_workspace('{"config": {"WorkspaceDir": "/work/proj"}}'),
             "/work/proj",
         )
 
@@ -308,9 +329,7 @@ class TestParseInspectWorkspace(unittest.TestCase):
 
 class TestSandboxWorkspacePathDryRun(unittest.TestCase):
     def test_dry_run_uses_the_host_path_without_probing(self):
-        result = sbx_run.sandbox_workspace_path(
-            "claude-ssh", Path("/home/user/proj"), dry_run=True
-        )
+        result = sbx_run.sandbox_workspace_path("claude-ssh", Path("/home/user/proj"), dry_run=True)
         self.assertEqual(result, "/home/user/proj")
 
 
@@ -332,9 +351,7 @@ class TestSandboxWorkspacePathProbeChain(unittest.TestCase):
         original = sbx_run.run_capture
         sbx_run.run_capture = fake_run_capture
         try:
-            result = sbx_run.sandbox_workspace_path(
-                "claude-ssh", Path("/host/proj"), dry_run=False
-            )
+            result = sbx_run.sandbox_workspace_path("claude-ssh", Path("/host/proj"), dry_run=False)
         finally:
             sbx_run.run_capture = original
 
@@ -353,9 +370,7 @@ class TestSandboxWorkspacePathProbeChain(unittest.TestCase):
         original = sbx_run.run_capture
         sbx_run.run_capture = fake_run_capture
         try:
-            result = sbx_run.sandbox_workspace_path(
-                "claude-ssh", Path("/host/proj"), dry_run=False
-            )
+            result = sbx_run.sandbox_workspace_path("claude-ssh", Path("/host/proj"), dry_run=False)
         finally:
             sbx_run.run_capture = original
 
@@ -454,9 +469,7 @@ class TestPrintCleanupHint(unittest.TestCase):
         return buf.getvalue()
 
     def test_name_present_round_trips_to_the_same_sandbox(self):
-        args = sbx_run.build_parser().parse_args(
-            ["--mode", "ssh", "--name", "my-sandbox"]
-        )
+        args = sbx_run.build_parser().parse_args(["--mode", "ssh", "--name", "my-sandbox"])
         name = sbx_run.sandbox_name(args)
         out = self._capture(args, name)
         printed = self._printed_command(out)
@@ -481,9 +494,7 @@ class TestPrintCleanupHint(unittest.TestCase):
         self.assertEqual(self._round_trip_name(printed), name)
 
     def test_name_absent_vscode_mcp_round_trips(self):
-        args = sbx_run.build_parser().parse_args(
-            ["--mode", "vscode", "--mcp", "mslearn"]
-        )
+        args = sbx_run.build_parser().parse_args(["--mode", "vscode", "--mcp", "mslearn"])
         name = sbx_run.sandbox_name(args)
         out = self._capture(args, name)
         printed = self._printed_command(out)
@@ -527,7 +538,7 @@ class TestRunModeExistingSandbox(unittest.TestCase):
         sbx_run.run_interactive = self._orig_int
 
     def test_existing_sandbox_uses_reattach_argv(self):
-        cap, inter = self._patch(inspect_rc=0)
+        _cap, inter = self._patch(inspect_rc=0)
         try:
             args = sbx_run.build_parser().parse_args(["--workspace", "/tmp/proj"])
             sbx_run.cmd_run(args)
@@ -537,7 +548,7 @@ class TestRunModeExistingSandbox(unittest.TestCase):
         self.assertEqual(inter[0], ["sbx", "run", "--name", "claude-custom"])
 
     def test_new_sandbox_uses_sbx_run_with_full_argv(self):
-        cap, inter = self._patch(inspect_rc=1)
+        _cap, inter = self._patch(inspect_rc=1)
         try:
             args = sbx_run.build_parser().parse_args(["--workspace", "/tmp/proj"])
             sbx_run.cmd_run(args)
@@ -652,7 +663,7 @@ class TestEnsureMcpRegistered(unittest.TestCase):
         self.assertEqual(inter, [])
 
     def test_missing_server_is_added(self):
-        cap, inter = self._patch(inspect_rc=1, add_rc=0)
+        _cap, inter = self._patch(inspect_rc=1, add_rc=0)
         try:
             sbx_run.ensure_mcp_registered("mslearn", None, dry_run=False)
         finally:
@@ -683,9 +694,7 @@ class TestSandboxWorkspaceInspectUsesJson(unittest.TestCase):
         original = sbx_run.run_capture
         sbx_run.run_capture = fake_run_capture
         try:
-            result = sbx_run.sandbox_workspace_path(
-                "claude-ssh", Path("/host/proj"), dry_run=False
-            )
+            result = sbx_run.sandbox_workspace_path("claude-ssh", Path("/host/proj"), dry_run=False)
         finally:
             sbx_run.run_capture = original
         self.assertEqual(result, "/sandbox/proj")
@@ -704,6 +713,99 @@ class TestInvocationPrefix(unittest.TestCase):
 
         with unittest.mock.patch.object(sbx_run.sys, "platform", "win32"):
             self.assertEqual(sbx_run.invocation_prefix(), "uv run sbx_run.py")
+
+
+class TestMcpUrlValidation(unittest.TestCase):
+    """#10: --mcp-url without --mcp is rejected; already-registered warns."""
+
+    def test_mcp_url_without_mcp_is_rejected(self):
+        with self.assertRaises(SystemExit):
+            sbx_run.main(["--dry-run", "--mcp-url", "https://example.test/mcp"])
+
+    def test_mcp_url_with_mcp_is_accepted(self):
+        import contextlib
+        import io
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = sbx_run.main(
+                ["--dry-run", "--mcp", "mslearn", "--mcp-url", "https://example.test/mcp"]
+            )
+        self.assertEqual(rc, 0)
+
+    def test_already_registered_with_mcp_url_prints_warning(self):
+        import contextlib
+        import io
+
+        def fake_capture(argv):
+            if argv[:3] == ["sbx", "mcp", "inspect"]:
+                return 0, ""
+            return 0, ""
+
+        original = sbx_run.run_capture
+        sbx_run.run_capture = fake_capture
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf):
+                sbx_run.ensure_mcp_registered("mslearn", "https://other.test/mcp", dry_run=False)
+        finally:
+            sbx_run.run_capture = original
+        self.assertIn("already registered", buf.getvalue())
+        self.assertIn("--mcp-url is ignored", buf.getvalue())
+
+
+class TestRmValidation(unittest.TestCase):
+    """#10: --rm outside the stop command is rejected."""
+
+    def test_rm_without_stop_is_rejected(self):
+        with self.assertRaises(SystemExit):
+            sbx_run.main(["--dry-run", "--rm"])
+
+    def test_rm_with_stop_is_accepted(self):
+        import contextlib
+        import io
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = sbx_run.main(["stop", "--rm", "--dry-run"])
+        self.assertEqual(rc, 0)
+
+
+class TestBashModeExistenceCheck(unittest.TestCase):
+    """#11: --mode bash exits with a clear error when the sandbox does not exist."""
+
+    def test_bash_mode_missing_sandbox_exits_with_message(self):
+        def fake_capture(argv):
+            return 1, ""
+
+        original = sbx_run.run_capture
+        sbx_run.run_capture = fake_capture
+        try:
+            with self.assertRaises(SystemExit) as ctx:
+                sbx_run.main(["--mode", "bash"])
+        finally:
+            sbx_run.run_capture = original
+        msg = str(ctx.exception)
+        self.assertIn("no sandbox", msg)
+
+
+class TestSandboxExistsUsesJson(unittest.TestCase):
+    """#11: sandbox_exists and sandbox_workspace_path both pass --json."""
+
+    def test_sandbox_exists_passes_json_flag(self):
+        calls = []
+
+        def fake_capture(argv):
+            calls.append(argv)
+            return 0, ""
+
+        original = sbx_run.run_capture
+        sbx_run.run_capture = fake_capture
+        try:
+            sbx_run.sandbox_exists("claude-custom")
+        finally:
+            sbx_run.run_capture = original
+        self.assertIn("--json", calls[0])
 
 
 if __name__ == "__main__":

@@ -43,12 +43,7 @@ AGENT = "claude"
 
 def derive_name(use_kit: bool, mcp: str | None, mode: str) -> str:
     """Build the sandbox name from the axes that distinguish sandboxes."""
-    return (
-        "claude"
-        + ("-custom" if use_kit else "")
-        + ("-mcp" if mcp else "")
-        + MODE_SUFFIX[mode]
-    )
+    return "claude" + ("-custom" if use_kit else "") + ("-mcp" if mcp else "") + MODE_SUFFIX[mode]
 
 
 def alias_for(name: str) -> str:
@@ -87,7 +82,7 @@ def build_reattach_argv(name: str) -> list[str]:
 
 
 def sandbox_exists(name: str) -> bool:
-    rc, _ = run_capture(["sbx", "inspect", name])
+    rc, _ = run_capture(["sbx", "inspect", name, "--json"])
     return rc == 0
 
 
@@ -169,9 +164,7 @@ def run_capture(argv: list[str]) -> tuple[int, str]:
     Used only for probes: the `sbx create` already-exists check and the
     sandbox workspace path lookup.
     """
-    proc = subprocess.run(
-        argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
-    )
+    proc = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     return proc.returncode, proc.stdout
 
 
@@ -196,24 +189,25 @@ def build_parser() -> argparse.ArgumentParser:
     # express "no subcommand means run", and a bare ./sbx_run.py is the most
     # frequent invocation. The cost is one shared flag namespace.
     parser.add_argument(
-        "command", nargs="?", choices=["run", "stop"], default="run"
+        "command",
+        nargs="?",
+        choices=["run", "stop"],
+        default="run",
+        metavar="{run,stop}",
+        help="action to perform (default: run)",
     )
     parser.add_argument(
-        "--mode", choices=sorted(MODE_SUFFIX), default="run",
+        "--mode",
+        choices=sorted(MODE_SUFFIX),
+        default="run",
         help="how to attach to the sandbox (default: run)",
     )
-    parser.add_argument(
-        "--no-kit", action="store_true", help="use the plain claude agent"
-    )
+    parser.add_argument("--no-kit", action="store_true", help="use the plain claude agent")
     parser.add_argument("--mcp", help="MCP server to attach")
     parser.add_argument("--mcp-url", help="URL for an MCP server not in KNOWN_MCP")
     parser.add_argument("--name", help="override the derived sandbox name")
-    parser.add_argument(
-        "--workspace", help="directory to mount (default: current directory)"
-    )
-    parser.add_argument(
-        "--rm", action="store_true", help="with stop: also remove the sandbox"
-    )
+    parser.add_argument("--workspace", help="directory to mount (default: current directory)")
+    parser.add_argument("--rm", action="store_true", help="with stop: also remove the sandbox")
     parser.add_argument(
         "--dry-run", action="store_true", help="print commands instead of running them"
     )
@@ -235,6 +229,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     kit = kit_for(args)
 
     if args.mode == "bash":
+        if not args.dry_run and not sandbox_exists(name):
+            sys.exit(f"error: no sandbox '{name}'; start one with `{invocation_prefix()}` first.")
         return run_interactive(build_exec_argv(name), args.dry_run)
 
     if mcp:
@@ -242,7 +238,11 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     if args.mode == "run":
         if not args.dry_run and sandbox_exists(name):
-            print(f"Sandbox '{name}' already exists; re-attaching.")
+            print(
+                f"Sandbox '{name}' already exists; re-attaching "
+                f"(kit, workspace, and MCP come from the existing sandbox; "
+                f"use 'stop --rm' to recreate)."
+            )
             argv = build_reattach_argv(name)
         else:
             argv = build_sbx_argv("run", name, kit, mcp, workspace)
@@ -274,7 +274,12 @@ def print_cleanup_hint(args: argparse.Namespace, name: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.mcp_url and not args.mcp:
+        parser.error("--mcp-url requires --mcp NAME")
+    if args.rm and args.command != "stop":
+        parser.error("--rm is only valid with the 'stop' command")
     if not args.dry_run:
         require_tool("sbx", "Run 'uv run sbx_setup.py' to install it.")
     if args.command == "stop":
@@ -286,12 +291,15 @@ _WORKSPACE_KEYS = ("workspace", "workspaceDir", "WorkspaceDir", "workspace_dir")
 
 
 def parse_inspect_workspace(output: str) -> str | None:
-    """Pull the sandbox-side workspace path out of `sbx inspect` output.
+    """Pull the host-side workspace path out of `sbx inspect --json` output.
 
-    The exact format is unverified -- sbx cannot be installed in the
-    authoring environment -- so this recognises several plausible JSON
-    shapes and returns None otherwise, letting the caller fall through to
-    the next probe rather than acting on a guess.
+    Verified against sbx daemon v0.39.0: the workspace lives at the top-level
+    "workspace" key, and it is the host path (identical to the sandbox path
+    only because Linux-style hosts bind-mount at the same location -- the
+    caller's leading-"/" guard is what rejects this value on Windows hosts,
+    where it differs). Additional key variants are accepted for forwards
+    compatibility. Returns None for unrecognised shapes, letting the caller
+    fall through to the next probe.
     """
     try:
         data = json.loads(output)
@@ -375,6 +383,11 @@ def ensure_mcp_registered(mcp: str, mcp_url: str | None, dry_run: bool) -> None:
     # listing, which a short or generic name could false-positive.
     rc, _ = run_capture(["sbx", "mcp", "inspect", mcp])
     if rc == 0:
+        if mcp_url:
+            print(
+                f"warning: MCP server '{mcp}' is already registered; "
+                f"--mcp-url is ignored. Use 'sbx mcp rm {mcp}' first to re-register."
+            )
         return
     rc = run_interactive(add_argv)
     if rc != 0:
@@ -400,15 +413,15 @@ def cmd_attach(
 
     ensure_created(build_sbx_argv("create", name, kit, mcp, workspace), args.dry_run)
 
-    rc = run_interactive(
-        ["sbx", "setup", "ssh", "--alias", alias_for(name)], args.dry_run
-    )
+    rc = run_interactive(["sbx", "setup", "ssh", "--alias", alias_for(name)], args.dry_run)
     if rc != 0:
         return rc
 
     sandbox_path = sandbox_workspace_path(name, workspace, args.dry_run)
 
     if args.mode == "vscode":
+        # code_exe is None only in --dry-run (require_tool was skipped); the
+        # literal "code" is printed but never executed.
         argv = build_vscode_argv(code_exe or "code", name, sandbox_path)
     else:
         argv = build_ssh_argv(name, sandbox_path)
