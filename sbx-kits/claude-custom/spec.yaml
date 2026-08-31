@@ -14,11 +14,11 @@ permissions:
       - docs.claude.com
       # `apt-get update` refreshes every configured apt source from the base
       # template. Keep all template sources allowed for amd64 and arm64 sandboxes.
-      - "archive.ubuntu.com:80"        # Ubuntu archive (amd64 main, HTTP)
-      - "security.ubuntu.com:80"       # Ubuntu security updates (amd64, HTTP)
-      - "ports.ubuntu.com:80"          # Ubuntu archive/security (arm64, HTTP)
-      - "download.docker.com:443"      # Docker's apt repo, pre-added by shell-docker
-      - "registry.npmjs.org:443"       # npm registry — needed for `npm install -g prettier`
+      - "archive.ubuntu.com:80" # Ubuntu archive (amd64 main, HTTP)
+      - "security.ubuntu.com:80" # Ubuntu security updates (amd64, HTTP)
+      - "ports.ubuntu.com:80" # Ubuntu archive/security (arm64, HTTP)
+      - "download.docker.com:443" # Docker's apt repo, pre-added by shell-docker
+      - "registry.npmjs.org:443" # npm registry — needed for `npm install -g prettier`
 
 security:
   privileged: false
@@ -31,6 +31,9 @@ setup:
     - command: apt-get update && apt-get install -y --no-install-recommends fd-find git-secrets jq nano tmux && rm -rf /var/lib/apt/lists/*
       user: "0"
       description: "Update apt index and install additional tools (fd-find, git-secrets, jq, nano, tmux)"
+    - command: echo "LANG=C.UTF-8" >> /etc/environment
+      user: "0"
+      description: "Set a UTF-8 locale so tmux and other TUIs render box-drawing/glyph output correctly (no locales package needed; C.UTF-8 is built into glibc)"
     - command: npm install -g prettier@3
       user: "0"
       description: "Install prettier@3 globally for post-tool-use file formatting"
@@ -49,6 +52,11 @@ setup:
       user: "0"
       description: Move settings.template.json into place as settings.json and ensure hook scripts are executable
   startup:
-    - command: ["sh", "-c", '[ -f "${HOME}/CLAUDE.template.md" ] && mv -f "${HOME}/CLAUDE.template.md" "${WORKSPACE_DIR}/../CLAUDE.md" || true']
+    - command:
+        [
+          "sh",
+          "-c",
+          '[ -f "${HOME}/CLAUDE.template.md" ] && mv -f "${HOME}/CLAUDE.template.md" "${WORKSPACE_DIR}/../CLAUDE.md" || true',
+        ]
       user: "1000"
       description: Install the sandbox CLAUDE.md next to the workspace (idempotent; no-op if already moved on a prior start)
