@@ -8,11 +8,11 @@ import sbx_run
 
 
 class TestDeriveName(unittest.TestCase):
-    def test_default_is_custom_kit_run_mode(self):
-        self.assertEqual(sbx_run.derive_name(True, None, "run"), "claude-custom")
+    def test_default_is_custom_kit_agent_mode(self):
+        self.assertEqual(sbx_run.derive_name(True, None, "agent"), "claude-custom")
 
-    def test_no_kit_run_mode(self):
-        self.assertEqual(sbx_run.derive_name(False, None, "run"), "claude")
+    def test_no_kit_agent_mode(self):
+        self.assertEqual(sbx_run.derive_name(False, None, "agent"), "claude")
 
     def test_kit_ssh(self):
         self.assertEqual(sbx_run.derive_name(True, None, "ssh"), "claude-custom-ssh")
@@ -27,34 +27,35 @@ class TestDeriveName(unittest.TestCase):
         self.assertEqual(sbx_run.derive_name(False, None, "vscode"), "claude-vscode")
 
     def test_mcp_gets_its_own_segment(self):
-        self.assertEqual(sbx_run.derive_name(False, "mslearn", "run"), "claude-mcp")
+        self.assertEqual(sbx_run.derive_name(False, "mslearn", "agent"), "claude-mcp")
 
     def test_mcp_composes_with_kit_and_mode(self):
         self.assertEqual(sbx_run.derive_name(True, "mslearn", "ssh"), "claude-custom-mcp-ssh")
 
-    def test_bash_and_run_derive_the_same_name(self):
+    def test_agent_bash_and_tmux_derive_the_same_name(self):
         """Regression test for the 30/31 defect.
 
         31_docker_sbx_claude_custom_kit_bash.sh exec'd into `claude-custom`
         while 30_docker_sbx_claude_custom_kit.sh created `claude-custom-kit`,
-        so it never attached to anything. Deriving both from one expression
-        makes them agree by construction.
+        so it never attached to anything. Deriving all three from one
+        expression makes them agree by construction.
         """
         for use_kit in (True, False):
             for mcp in (None, "mslearn"):
-                self.assertEqual(
-                    sbx_run.derive_name(use_kit, mcp, "bash"),
-                    sbx_run.derive_name(use_kit, mcp, "run"),
-                )
+                base = sbx_run.derive_name(use_kit, mcp, "agent")
+                self.assertEqual(sbx_run.derive_name(use_kit, mcp, "bash"), base)
+                self.assertEqual(sbx_run.derive_name(use_kit, mcp, "tmux"), base)
 
-    def test_all_eight_kit_mode_combinations(self):
+    def test_all_ten_kit_mode_combinations(self):
         expected = {
-            (True, "run"): "claude-custom",
+            (True, "agent"): "claude-custom",
             (True, "bash"): "claude-custom",
+            (True, "tmux"): "claude-custom",
             (True, "ssh"): "claude-custom-ssh",
             (True, "vscode"): "claude-custom-vscode",
-            (False, "run"): "claude",
+            (False, "agent"): "claude",
             (False, "bash"): "claude",
+            (False, "tmux"): "claude",
             (False, "ssh"): "claude-ssh",
             (False, "vscode"): "claude-vscode",
         }
@@ -129,8 +130,26 @@ class TestOtherArgvBuilders(unittest.TestCase):
 
     def test_exec_argv(self):
         self.assertEqual(
-            sbx_run.build_exec_argv("claude-custom"),
+            sbx_run.build_exec_argv("claude-custom", ["bash"]),
             ["sbx", "exec", "-it", "claude-custom", "bash"],
+        )
+
+    def test_attach_argv_agent_reattaches(self):
+        self.assertEqual(
+            sbx_run.build_attach_argv("agent", "claude-custom"),
+            ["sbx", "run", "--name", "claude-custom"],
+        )
+
+    def test_attach_argv_bash_execs_bash(self):
+        self.assertEqual(
+            sbx_run.build_attach_argv("bash", "claude-custom"),
+            ["sbx", "exec", "-it", "claude-custom", "bash"],
+        )
+
+    def test_attach_argv_tmux_attaches_or_creates_main_session(self):
+        self.assertEqual(
+            sbx_run.build_attach_argv("tmux", "claude-custom"),
+            ["sbx", "exec", "-it", "claude-custom", "tmux", "new-session", "-A", "-s", "main"],
         )
 
     def test_ssh_argv(self):
@@ -199,10 +218,10 @@ class TestParser(unittest.TestCase):
     def setUp(self):
         self.parser = sbx_run.build_parser()
 
-    def test_bare_invocation_defaults_to_run_with_the_kit(self):
+    def test_bare_invocation_defaults_to_agent_mode_with_the_kit(self):
         args = self.parser.parse_args([])
         self.assertEqual(args.command, "run")
-        self.assertEqual(args.mode, "run")
+        self.assertEqual(args.mode, "agent")
         self.assertFalse(args.no_kit)
 
     def test_stop_is_a_positional_not_a_subparser(self):
@@ -514,14 +533,18 @@ class TestBuildReattachArgv(unittest.TestCase):
         self.assertNotIn("--static-mcp", argv)
 
 
-class TestRunModeExistingSandbox(unittest.TestCase):
-    def _patch(self, inspect_rc):
+class TestAgentModeExistingSandbox(unittest.TestCase):
+    def _patch(self, inspect_rc, create_rc=0):
         capture_calls = []
         interactive_calls = []
 
         def fake_capture(argv):
             capture_calls.append(argv)
-            return inspect_rc, ""
+            if argv[:2] == ["sbx", "inspect"]:
+                return inspect_rc, ""
+            if argv[:2] == ["sbx", "create"]:
+                return create_rc, ""
+            raise AssertionError(f"unexpected run_capture call: {argv}")
 
         def fake_interactive(argv, dry_run=False):
             interactive_calls.append(argv)
@@ -537,26 +560,27 @@ class TestRunModeExistingSandbox(unittest.TestCase):
         sbx_run.run_capture = self._orig_cap
         sbx_run.run_interactive = self._orig_int
 
-    def test_existing_sandbox_uses_reattach_argv(self):
-        _cap, inter = self._patch(inspect_rc=0)
+    def test_existing_sandbox_skips_create_and_reattaches(self):
+        cap, inter = self._patch(inspect_rc=0)
         try:
             args = sbx_run.build_parser().parse_args(["--workspace", "/tmp/proj"])
             sbx_run.cmd_run(args)
         finally:
             self._restore()
-        self.assertEqual(len(inter), 1)
-        self.assertEqual(inter[0], ["sbx", "run", "--name", "claude-custom"])
+        self.assertFalse(any(c[:2] == ["sbx", "create"] for c in cap))
+        self.assertEqual(inter, [["sbx", "run", "--name", "claude-custom"]])
 
-    def test_new_sandbox_uses_sbx_run_with_full_argv(self):
-        _cap, inter = self._patch(inspect_rc=1)
+    def test_new_sandbox_is_created_then_reattached(self):
+        cap, inter = self._patch(inspect_rc=1)
         try:
             args = sbx_run.build_parser().parse_args(["--workspace", "/tmp/proj"])
             sbx_run.cmd_run(args)
         finally:
             self._restore()
-        self.assertEqual(len(inter), 1)
-        self.assertEqual(inter[0][1], "run")
-        self.assertIn("--kit", inter[0])
+        create_calls = [c for c in cap if c[:2] == ["sbx", "create"]]
+        self.assertEqual(len(create_calls), 1)
+        self.assertIn("--kit", create_calls[0])
+        self.assertEqual(inter, [["sbx", "run", "--name", "claude-custom"]])
 
     def test_dry_run_skips_probe_and_emits_full_command(self):
         import contextlib
@@ -771,28 +795,57 @@ class TestRmValidation(unittest.TestCase):
         self.assertEqual(rc, 0)
 
 
-class TestBashModeExistenceCheck(unittest.TestCase):
-    """#11: --mode bash exits with a clear error when the sandbox does not exist."""
+class TestBashAndTmuxModeCreateIfMissing(unittest.TestCase):
+    """--mode bash/tmux create the sandbox first instead of erroring out."""
 
-    def test_bash_mode_missing_sandbox_exits_with_message(self):
+    def _patch(self, inspect_rc, create_rc=0):
+        capture_calls = []
+        interactive_calls = []
+
         def fake_capture(argv):
-            return 1, ""
+            capture_calls.append(argv)
+            if argv[:2] == ["sbx", "inspect"]:
+                return inspect_rc, ""
+            if argv[:2] == ["sbx", "create"]:
+                return create_rc, ""
+            raise AssertionError(f"unexpected run_capture call: {argv}")
 
-        def fake_require_tool(name, hint):
-            return name
+        def fake_interactive(argv, dry_run=False):
+            interactive_calls.append(argv)
+            return 0
 
-        original_capture = sbx_run.run_capture
-        original_require_tool = sbx_run.require_tool
+        self._orig_cap = sbx_run.run_capture
+        self._orig_int = sbx_run.run_interactive
         sbx_run.run_capture = fake_capture
-        sbx_run.require_tool = fake_require_tool
+        sbx_run.run_interactive = fake_interactive
+        return capture_calls, interactive_calls
+
+    def _restore(self):
+        sbx_run.run_capture = self._orig_cap
+        sbx_run.run_interactive = self._orig_int
+
+    def test_bash_mode_creates_then_execs_bash_when_missing(self):
+        cap, inter = self._patch(inspect_rc=1)
         try:
-            with self.assertRaises(SystemExit) as ctx:
-                sbx_run.main(["--mode", "bash"])
+            args = sbx_run.build_parser().parse_args(["--mode", "bash", "--workspace", "/tmp/proj"])
+            sbx_run.cmd_run(args)
         finally:
-            sbx_run.run_capture = original_capture
-            sbx_run.require_tool = original_require_tool
-        msg = str(ctx.exception)
-        self.assertIn("no sandbox", msg)
+            self._restore()
+        self.assertTrue(any(c[:2] == ["sbx", "create"] for c in cap))
+        self.assertEqual(inter, [["sbx", "exec", "-it", "claude-custom", "bash"]])
+
+    def test_tmux_mode_skips_create_and_attaches_when_sandbox_exists(self):
+        cap, inter = self._patch(inspect_rc=0)
+        try:
+            args = sbx_run.build_parser().parse_args(["--mode", "tmux", "--workspace", "/tmp/proj"])
+            sbx_run.cmd_run(args)
+        finally:
+            self._restore()
+        self.assertFalse(any(c[:2] == ["sbx", "create"] for c in cap))
+        self.assertEqual(
+            inter,
+            [["sbx", "exec", "-it", "claude-custom", "tmux", "new-session", "-A", "-s", "main"]],
+        )
 
 
 class TestSandboxExistsUsesJson(unittest.TestCase):

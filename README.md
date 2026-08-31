@@ -59,19 +59,20 @@ Runs Claude Code in a sandbox with the current directory mounted. The sandbox
 name is derived from the kit, MCP and mode you select, so the same command
 always reaches the same sandbox.
 
-| Flag                       | Effect                                                                      |
-| -------------------------- | --------------------------------------------------------------------------- |
-| `--mode run`               | Run Claude Code in the sandbox (default); re-attaches if it already exists. |
-| `--mode bash`              | Open a bash shell in the sandbox `--mode run` created.                      |
-| `--mode ssh`               | Create the sandbox, register an SSH alias, and connect.                     |
-| `--mode vscode`            | Same, then open VS Code over Remote-SSH.                                    |
-| `--no-kit`                 | Use the plain `claude` agent instead of the `claude-custom` kit.            |
-| `--mcp mslearn`            | Attach the Microsoft Learn MCP server.                                      |
-| `--mcp NAME --mcp-url URL` | Attach any other MCP server.                                                |
-| `--workspace PATH`         | Mount some other directory (default: the current one).                      |
-| `--name NAME`              | Override the derived sandbox name.                                          |
-| `--rm`                     | With `stop`: also remove the sandbox after stopping it.                     |
-| `--dry-run`                | Print the commands instead of running them.                                 |
+| Flag                       | Effect                                                                |
+| -------------------------- | --------------------------------------------------------------------- |
+| `--mode agent`             | Run Claude Code in the sandbox (default); creates it first if needed. |
+| `--mode bash`              | Open a bash shell in the sandbox (same one `--mode agent` uses).      |
+| `--mode tmux`              | Attach to (or create) a `tmux` session named `main` in that sandbox.  |
+| `--mode ssh`               | Create the sandbox, register an SSH alias, and connect.               |
+| `--mode vscode`            | Same, then open VS Code over Remote-SSH.                              |
+| `--no-kit`                 | Use the plain `claude` agent instead of the `claude-custom` kit.      |
+| `--mcp mslearn`            | Attach the Microsoft Learn MCP server.                                |
+| `--mcp NAME --mcp-url URL` | Attach any other MCP server.                                          |
+| `--workspace PATH`         | Mount some other directory (default: the current one).                |
+| `--name NAME`              | Override the derived sandbox name.                                    |
+| `--rm`                     | With `stop`: also remove the sandbox after stopping it.               |
+| `--dry-run`                | Print the commands instead of running them.                           |
 
 `sbx_run.py stop [--rm]` stops the sandbox the same flags would launch, and
 with `--rm` removes it. Sandboxes are not cleaned up automatically; the script

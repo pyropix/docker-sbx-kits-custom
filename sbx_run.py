@@ -24,12 +24,14 @@ os.environ["SBX_NO_TELEMETRY"] = "1"
 
 # Mode -> sandbox-name suffix.
 #
-# `bash` deliberately shares `run`'s empty suffix: it attaches to the sandbox
-# `--mode run` created. `ssh` and `vscode` get their own names because those
-# sandboxes persist across invocations while run-mode sandboxes are ephemeral.
+# `agent`, `bash`, and `tmux` deliberately share one empty suffix: they are
+# three different ways to attach to the same persistent sandbox (create it if
+# missing, then run the agent, or exec bash/tmux into it). `ssh` and `vscode`
+# get their own names because those sandboxes are set up for SSH access.
 MODE_SUFFIX = {
-    "run": "",
+    "agent": "",
     "bash": "",
+    "tmux": "",
     "ssh": "-ssh",
     "vscode": "-vscode",
 }
@@ -73,8 +75,19 @@ def build_sbx_argv(
     return argv
 
 
-def build_exec_argv(name: str) -> list[str]:
-    return ["sbx", "exec", "-it", name, "bash"]
+def build_exec_argv(name: str, command: list[str]) -> list[str]:
+    return ["sbx", "exec", "-it", name, *command]
+
+
+def build_attach_argv(mode: str, name: str) -> list[str]:
+    """Attach command for --mode agent/bash/tmux once the sandbox exists."""
+    if mode == "agent":
+        return build_reattach_argv(name)
+    if mode == "bash":
+        return build_exec_argv(name, ["bash"])
+    # tmux: attach to session "main" if it exists, create it otherwise, so
+    # repeated `--mode tmux` invocations return to the same session.
+    return build_exec_argv(name, ["tmux", "new-session", "-A", "-s", "main"])
 
 
 def build_reattach_argv(name: str) -> list[str]:
@@ -204,8 +217,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--mode",
         choices=sorted(MODE_SUFFIX),
-        default="run",
-        help="how to attach to the sandbox (default: run)",
+        default="agent",
+        help="how to attach to the sandbox (default: agent)",
     )
     parser.add_argument("--no-kit", action="store_true", help="use the plain claude agent")
     parser.add_argument("--mcp", help="MCP server to attach")
@@ -233,30 +246,34 @@ def cmd_run(args: argparse.Namespace) -> int:
     name = sandbox_name(args)
     kit = kit_for(args)
 
-    if args.mode == "bash":
-        if not args.dry_run and not sandbox_exists(name):
-            sys.exit(f"error: no sandbox '{name}'; start one with `{invocation_prefix()}` first.")
-        return run_interactive(build_exec_argv(name), args.dry_run)
+    if args.mode in ("agent", "bash", "tmux"):
+        return cmd_local(args, name, kit, mcp, workspace)
 
+    return cmd_attach(args, name, kit, mcp, workspace)
+
+
+def cmd_local(
+    args: argparse.Namespace,
+    name: str,
+    kit: Path | None,
+    mcp: str | None,
+    workspace: Path,
+) -> int:
+    """Handle --mode agent/bash/tmux: create the sandbox if needed, then attach.
+
+    Skips `sbx create` entirely when the sandbox already exists, so kit,
+    workspace, and MCP keep coming from whatever created it originally.
+    """
     if mcp:
         ensure_mcp_registered(mcp, args.mcp_url, args.dry_run)
 
-    if args.mode == "run":
-        if not args.dry_run and sandbox_exists(name):
-            print(
-                f"Sandbox '{name}' already exists; re-attaching "
-                f"(kit, workspace, and MCP come from the existing sandbox; "
-                f"use 'stop --rm' to recreate)."
-            )
-            argv = build_reattach_argv(name)
-        else:
-            argv = build_sbx_argv("run", name, kit, mcp, workspace)
-        rc = run_interactive(argv, args.dry_run)
-        if not args.dry_run:
-            print_cleanup_hint(args, name)
-        return rc
+    if args.dry_run or not sandbox_exists(name):
+        ensure_created(build_sbx_argv("create", name, kit, mcp, workspace), args.dry_run)
 
-    return cmd_attach(args, name, kit, mcp, workspace)
+    rc = run_interactive(build_attach_argv(args.mode, name), args.dry_run)
+    if not args.dry_run:
+        print_cleanup_hint(args, name)
+    return rc
 
 
 def print_cleanup_hint(args: argparse.Namespace, name: str) -> None:
@@ -266,7 +283,7 @@ def print_cleanup_hint(args: argparse.Namespace, name: str) -> None:
         # redundant (and could even mismatch it), so it wins outright.
         flags += ["--name", args.name]
     else:
-        if args.mode != "run":
+        if args.mode != "agent":
             flags += ["--mode", args.mode]
         if args.no_kit:
             flags.append("--no-kit")
