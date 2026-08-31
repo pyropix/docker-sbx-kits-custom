@@ -561,7 +561,7 @@ class TestAgentModeExistingSandbox(unittest.TestCase):
         sbx_run.run_interactive = self._orig_int
 
     def test_existing_sandbox_skips_create_and_reattaches(self):
-        cap, inter = self._patch(inspect_rc=0)
+        _cap, inter = self._patch(inspect_rc=0)
         try:
             args = sbx_run.build_parser().parse_args(["--workspace", "/tmp/proj"])
             sbx_run.cmd_run(args)
@@ -571,7 +571,7 @@ class TestAgentModeExistingSandbox(unittest.TestCase):
         self.assertEqual(inter, [["sbx", "run", "--name", "claude-custom"]])
 
     def test_new_sandbox_is_created_then_reattached(self):
-        cap, inter = self._patch(inspect_rc=1)
+        _cap, inter = self._patch(inspect_rc=1)
         try:
             args = sbx_run.build_parser().parse_args(["--workspace", "/tmp/proj"])
             sbx_run.cmd_run(args)
@@ -828,7 +828,7 @@ class TestBashAndTmuxModeCreateIfMissing(unittest.TestCase):
         sbx_run.run_interactive = self._orig_int
 
     def test_bash_mode_creates_then_execs_bash_when_missing(self):
-        cap, inter = self._patch(inspect_rc=1)
+        _cap, inter = self._patch(inspect_rc=1)
         try:
             args = sbx_run.build_parser().parse_args(["--mode", "bash", "--workspace", "/tmp/proj"])
             sbx_run.cmd_run(args)
@@ -838,13 +838,14 @@ class TestBashAndTmuxModeCreateIfMissing(unittest.TestCase):
         self.assertEqual(
             inter,
             [
-                ["sbx", "create", "--name", "claude-custom", "--kit", str(sbx_run.KIT_DIR), "claude", "/tmp/proj"],
+                ["sbx", "create", "--name", "claude-custom", "--kit", str(sbx_run.KIT_DIR),
+                 "claude", "/tmp/proj"],
                 ["sbx", "exec", "-it", "claude-custom", "bash"],
             ],
         )
 
     def test_tmux_mode_skips_create_and_attaches_when_sandbox_exists(self):
-        cap, inter = self._patch(inspect_rc=0)
+        _cap, inter = self._patch(inspect_rc=0)
         try:
             args = sbx_run.build_parser().parse_args(["--mode", "tmux", "--workspace", "/tmp/proj"])
             sbx_run.cmd_run(args)
