@@ -3,6 +3,9 @@
 # Prefer: uv run sbx_setup.py
 set -euo pipefail
 
+## Telemetry: opt out of all analytics
+export SBX_NO_TELEMETRY=1
+
 curl -fsSL https://get.docker.com | sudo REPO_ONLY=1 sh
 sudo apt-get install -y docker-sbx
 sudo usermod -aG kvm "$USER"
