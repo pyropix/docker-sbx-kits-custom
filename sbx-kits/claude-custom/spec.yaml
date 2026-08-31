@@ -25,6 +25,9 @@ security:
 
 setup:
   install:
+    # - command: "install -m 0644 /home/agent/internal-ca.crt /usr/local/share/ca-certificates/internal-ca.crt && update-ca-certificates"
+    #   user: "0"
+    #   description: Install internal CA certificate
     - command: apt-get update && apt-get install -y --no-install-recommends fd-find git-secrets jq nano tmux && rm -rf /var/lib/apt/lists/*
       user: "0"
       description: "Update apt index and install additional tools (fd-find, git-secrets, jq, nano, tmux)"
