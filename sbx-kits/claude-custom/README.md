@@ -24,6 +24,9 @@ Based on [`claude-sbx-statusline`](https://github.com/docker/sbx-kits-contrib/tr
   use conventional commits.
 - **Custom command** — `/git-group-commits`, an interactive helper that groups unstaged
   changes into atomic commits.
+- **Optional internal CA certificate** — drop a `files/home/internal-ca.crt` next to this
+  kit and uncomment the matching `install` step in `spec.yaml` to trust it inside the
+  sandbox. Useful behind a corporate TLS-inspecting proxy.
 
 ## Quick start
 
@@ -48,6 +51,10 @@ $ sbx run claude --kit ./claude-custom .
   sandbox. The `startup` step moves it to `$WORKSPACE_DIR/../CLAUDE.md` once per sandbox
   lifetime. Any host-side `CLAUDE.md` living next to a workspace is a derivative of this
   file; keep them in sync manually or let the sandbox overwrite it on first start.
+- **`files/home/internal-ca.crt`** (not committed, listed in this kit's `.gitignore`) is
+  picked up by an `install` step in `spec.yaml` that is commented out by default. Place a
+  PEM-encoded certificate at that path and uncomment the step to have it installed to
+  `/usr/local/share/ca-certificates/` and trusted via `update-ca-certificates` at build time.
 
 - **`files/home/.claude/hooks/prettier-format.sh`** is the `PostToolUse` hook. It checks
   for `jq` and `prettier` before running; if either is missing it exits silently. Prettier
@@ -71,7 +78,7 @@ image drift, not because it's missing). The install step adds `fd-find`, `git-se
   `settings.template.json` stops working, verify it against the current settings schema;
   a typo or removed key will not produce an error.
 - **Windows prerequisite: Hyper-V / Hypervisor Platform** must be enabled before installing
-  Docker Sandboxes on Windows. Enable it via *Settings → Optional features → Hyper-V*, or
+  Docker Sandboxes on Windows. Enable it via _Settings → Optional features → Hyper-V_, or
   run `Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform` in an
   elevated PowerShell session. The installer does not check for this at runtime.
 
