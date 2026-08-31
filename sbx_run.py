@@ -272,11 +272,11 @@ def cmd_local(
 
     rc = run_interactive(build_attach_argv(args.mode, name), args.dry_run)
     if not args.dry_run:
-        print_cleanup_hint(args, name)
+        prompt_cleanup(args, name)
     return rc
 
 
-def print_cleanup_hint(args: argparse.Namespace, name: str) -> None:
+def prompt_cleanup(args: argparse.Namespace, name: str) -> None:
     flags = []
     if args.name:
         # --name alone determines the sandbox; the other flags would be
@@ -289,10 +289,22 @@ def print_cleanup_hint(args: argparse.Namespace, name: str) -> None:
             flags.append("--no-kit")
         if args.mcp:
             flags += ["--mcp", args.mcp]
-    print(
+
+    stop_hint = (
         f"\nSandbox '{name}' may still be running. To remove it:\n"
         f"  {invocation_prefix()} stop --rm {' '.join(flags)}".rstrip()
     )
+
+    try:
+        answer = input(f"\nStop and remove sandbox '{name}'? [y/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        answer = ""
+
+    if answer.startswith("y"):
+        run_interactive(["sbx", "stop", name])
+        run_interactive(["sbx", "rm", name, "--force"])
+    else:
+        print(stop_hint)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -453,7 +465,7 @@ def cmd_attach(
 
     rc = run_interactive(argv, args.dry_run)
     if not args.dry_run:
-        print_cleanup_hint(args, name)
+        prompt_cleanup(args, name)
     return rc
 
 

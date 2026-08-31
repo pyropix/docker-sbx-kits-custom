@@ -458,7 +458,7 @@ class TestStopDryRun(unittest.TestCase):
         self.assertIn("sbx stop claude-ssh", stop_out)
 
 
-class TestPrintCleanupHint(unittest.TestCase):
+class TestPromptCleanup(unittest.TestCase):
     """The printed `stop` command must resolve to the sandbox actually named
     in the message above it -- i.e. round-trip through build_parser() and
     sandbox_name() back to the same name."""
@@ -481,10 +481,11 @@ class TestPrintCleanupHint(unittest.TestCase):
     def _capture(self, args: argparse.Namespace, name: str) -> str:
         import contextlib
         import io
+        from unittest.mock import patch
 
         buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            sbx_run.print_cleanup_hint(args, name)
+        with contextlib.redirect_stdout(buf), patch("builtins.input", return_value=""):
+            sbx_run.prompt_cleanup(args, name)
         return buf.getvalue()
 
     def test_name_present_round_trips_to_the_same_sandbox(self):
