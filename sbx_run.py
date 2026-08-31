@@ -380,13 +380,15 @@ def sandbox_workspace_path(name: str, host_workspace: Path, dry_run: bool) -> st
 
 
 def ensure_created(argv: list[str], dry_run: bool) -> None:
-    """Create the sandbox, treating "already exists" as success."""
-    if dry_run:
-        print(render(argv))
-        return
-    rc, out = run_capture(argv)
-    print(out, end="")
-    if rc != 0 and "already exists" not in out:
+    """Create the sandbox with the real terminal attached.
+
+    Callers must gate this on `not sandbox_exists(name)` first: `sbx create`
+    is run interactively (stdio inherited) so its progress renders live
+    instead of being buffered and dumped after the fact, which means there's
+    no captured text left to string-match an "already exists" error against.
+    """
+    rc = run_interactive(argv, dry_run)
+    if not dry_run and rc != 0:
         sys.exit(rc)
 
 
@@ -433,7 +435,8 @@ def cmd_attach(
             "Install VS Code and the 'Remote - SSH' extension.",
         )
 
-    ensure_created(build_sbx_argv("create", name, kit, mcp, workspace), args.dry_run)
+    if args.dry_run or not sandbox_exists(name):
+        ensure_created(build_sbx_argv("create", name, kit, mcp, workspace), args.dry_run)
 
     rc = run_interactive(["sbx", "setup", "ssh", "--alias", alias_for(name)], args.dry_run)
     if rc != 0:

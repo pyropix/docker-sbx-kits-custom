@@ -542,12 +542,12 @@ class TestAgentModeExistingSandbox(unittest.TestCase):
             capture_calls.append(argv)
             if argv[:2] == ["sbx", "inspect"]:
                 return inspect_rc, ""
-            if argv[:2] == ["sbx", "create"]:
-                return create_rc, ""
             raise AssertionError(f"unexpected run_capture call: {argv}")
 
         def fake_interactive(argv, dry_run=False):
             interactive_calls.append(argv)
+            if argv[:2] == ["sbx", "create"]:
+                return create_rc
             return 0
 
         self._orig_cap = sbx_run.run_capture
@@ -561,26 +561,29 @@ class TestAgentModeExistingSandbox(unittest.TestCase):
         sbx_run.run_interactive = self._orig_int
 
     def test_existing_sandbox_skips_create_and_reattaches(self):
-        cap, inter = self._patch(inspect_rc=0)
+        _cap, inter = self._patch(inspect_rc=0)
         try:
             args = sbx_run.build_parser().parse_args(["--workspace", "/tmp/proj"])
             sbx_run.cmd_run(args)
         finally:
             self._restore()
-        self.assertFalse(any(c[:2] == ["sbx", "create"] for c in cap))
+        self.assertFalse(any(c[:2] == ["sbx", "create"] for c in inter))
         self.assertEqual(inter, [["sbx", "run", "--name", "claude-custom"]])
 
     def test_new_sandbox_is_created_then_reattached(self):
-        cap, inter = self._patch(inspect_rc=1)
+        _cap, inter = self._patch(inspect_rc=1)
         try:
             args = sbx_run.build_parser().parse_args(["--workspace", "/tmp/proj"])
             sbx_run.cmd_run(args)
         finally:
             self._restore()
-        create_calls = [c for c in cap if c[:2] == ["sbx", "create"]]
+        create_calls = [c for c in inter if c[:2] == ["sbx", "create"]]
         self.assertEqual(len(create_calls), 1)
         self.assertIn("--kit", create_calls[0])
-        self.assertEqual(inter, [["sbx", "run", "--name", "claude-custom"]])
+        self.assertEqual(
+            inter,
+            [create_calls[0], ["sbx", "run", "--name", "claude-custom"]],
+        )
 
     def test_dry_run_skips_probe_and_emits_full_command(self):
         import contextlib
@@ -806,12 +809,12 @@ class TestBashAndTmuxModeCreateIfMissing(unittest.TestCase):
             capture_calls.append(argv)
             if argv[:2] == ["sbx", "inspect"]:
                 return inspect_rc, ""
-            if argv[:2] == ["sbx", "create"]:
-                return create_rc, ""
             raise AssertionError(f"unexpected run_capture call: {argv}")
 
         def fake_interactive(argv, dry_run=False):
             interactive_calls.append(argv)
+            if argv[:2] == ["sbx", "create"]:
+                return create_rc
             return 0
 
         self._orig_cap = sbx_run.run_capture
@@ -825,23 +828,38 @@ class TestBashAndTmuxModeCreateIfMissing(unittest.TestCase):
         sbx_run.run_interactive = self._orig_int
 
     def test_bash_mode_creates_then_execs_bash_when_missing(self):
-        cap, inter = self._patch(inspect_rc=1)
+        _cap, inter = self._patch(inspect_rc=1)
         try:
             args = sbx_run.build_parser().parse_args(["--mode", "bash", "--workspace", "/tmp/proj"])
             sbx_run.cmd_run(args)
         finally:
             self._restore()
-        self.assertTrue(any(c[:2] == ["sbx", "create"] for c in cap))
-        self.assertEqual(inter, [["sbx", "exec", "-it", "claude-custom", "bash"]])
+        self.assertTrue(any(c[:2] == ["sbx", "create"] for c in inter))
+        self.assertEqual(
+            inter,
+            [
+                [
+                    "sbx",
+                    "create",
+                    "--name",
+                    "claude-custom",
+                    "--kit",
+                    str(sbx_run.KIT_DIR),
+                    "claude",
+                    "/tmp/proj",
+                ],
+                ["sbx", "exec", "-it", "claude-custom", "bash"],
+            ],
+        )
 
     def test_tmux_mode_skips_create_and_attaches_when_sandbox_exists(self):
-        cap, inter = self._patch(inspect_rc=0)
+        _cap, inter = self._patch(inspect_rc=0)
         try:
             args = sbx_run.build_parser().parse_args(["--mode", "tmux", "--workspace", "/tmp/proj"])
             sbx_run.cmd_run(args)
         finally:
             self._restore()
-        self.assertFalse(any(c[:2] == ["sbx", "create"] for c in cap))
+        self.assertFalse(any(c[:2] == ["sbx", "create"] for c in inter))
         self.assertEqual(
             inter,
             [["sbx", "exec", "-it", "claude-custom", "tmux", "new-session", "-A", "-s", "main"]],
