@@ -73,7 +73,10 @@ After presenting all groups, ask the user:
 Once the user approves, for each commit group (in order):
 
 1. Stage the selected files: `git add <files>`
-2. Commit with the message: `git commit -m "<message>"`
+2. Commit with the message. For a single-line subject: `git commit -m "<subject>"`.
+   For a subject + body, use multiple `-m` flags (each becomes a paragraph):
+   `git commit -m "<subject>" -m "<body paragraph>"`. Alternatively, use a heredoc:
+   `git commit -F - <<'EOF'` followed by the message and `EOF`.
 3. Report the result
 
 If the user asked to omit a group, skip it entirely.

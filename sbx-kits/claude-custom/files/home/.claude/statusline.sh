@@ -32,13 +32,13 @@ join() {
   printf '%s' "$out"
 }
 
-# --- Git branch + added/deleted counts ---
+# --- Git branch + modified/deleted counts ---
 git_seg=""
 if branch=$(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null); then
-  added=$(git -C "$dir" status --porcelain 2>/dev/null | grep -c '^??')
-  deleted=$(git -C "$dir" status --porcelain 2>/dev/null | grep -c '^.D')
+  modified=$(git -C "$dir" status --porcelain 2>/dev/null | grep -cE '^(.[MA]|[MA].|\?\?)')
+  deleted=$(git -C "$dir" status --porcelain 2>/dev/null | grep -cE '^(.D|D.)')
   changes=""
-  [ "$added" -gt 0 ] && changes="${changes}+${added}"
+  [ "$modified" -gt 0 ] && changes="${changes}+${modified}"
   [ "$deleted" -gt 0 ] && changes="${changes}-${deleted}"
   if [ -n "$changes" ]; then
     git_seg=" ${GREEN}(${branch} ${RED}${changes}${GREEN})${RST}"
@@ -64,8 +64,8 @@ if [ -n "$pct" ] && [ "$pct" != "null" ]; then
   [ "$filled" -gt "$battery_width" ] && filled=$battery_width
   [ "$filled" -lt 0 ] && filled=0
   empty=$(( battery_width - filled ))
-  bar=$(printf '%0.s█' $(seq 1 $filled) 2>/dev/null)
-  bar="$bar$(printf '%0.s░' $(seq 1 $empty) 2>/dev/null)"
+  bar=""; i=$filled; while [ "$i" -gt 0 ]; do bar="${bar}█"; i=$((i-1)); done
+  i=$empty;          while [ "$i" -gt 0 ]; do bar="${bar}░"; i=$((i-1)); done
   if   [ "$used_int" -ge 80 ]; then c=$RED
   elif [ "$used_int" -ge 50 ]; then c=$YELLOW
   else c=$GREEN; fi

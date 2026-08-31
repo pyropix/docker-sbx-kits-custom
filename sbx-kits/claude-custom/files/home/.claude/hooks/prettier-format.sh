@@ -2,6 +2,7 @@
 set -euo pipefail
 
 command -v jq >/dev/null 2>&1 || exit 0
+command -v prettier >/dev/null 2>&1 || exit 0
 
 input=$(cat)
 file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty')
@@ -18,4 +19,7 @@ case "${file_path##*.}" in
         ;;
 esac
 
-prettier --write "$file_path" 2>/dev/null || true
+# Exit 0 regardless so a prettier failure doesn't abort the Claude session,
+# but leave stderr untouched so the agent sees errors (e.g. a syntax error it
+# just wrote) on the hook's own stderr, not merged into its stdout.
+prettier --write "$file_path" >/dev/null || true
