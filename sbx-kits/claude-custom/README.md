@@ -24,6 +24,9 @@ Based on [`claude-sbx-statusline`](https://github.com/docker/sbx-kits-contrib/tr
   use conventional commits.
 - **Custom command** — `/git-group-commits`, an interactive helper that groups unstaged
   changes into atomic commits.
+- **tmux config** — `~/.tmux.conf` with mouse support, 50 000-line scrollback, `|`/`-` split
+  bindings that inherit the current path, vim-style pane navigation (`h/j/k/l`), and a dark
+  status bar that matches the sandbox colour scheme.
 - **Optional internal CA certificate** — drop a `files/home/internal-ca.crt` next to this
   kit and uncomment the matching `install` step in `spec.yaml` to trust it inside the
   sandbox. Useful behind a corporate TLS-inspecting proxy.
@@ -55,6 +58,9 @@ $ sbx run claude --kit ./claude-custom .
   picked up by an `install` step in `spec.yaml` that is commented out by default. Place a
   PEM-encoded certificate at that path and uncomment the step to have it installed to
   `/usr/local/share/ca-certificates/` and trusted via `update-ca-certificates` at build time.
+
+- **`files/home/.tmux.conf`** is copied to `~/.tmux.conf` at sandbox build time. tmux reads
+  it automatically on session start, so `--mode tmux` picks it up without any extra steps.
 
 - **`files/home/.claude/hooks/prettier-format.sh`** is the `PostToolUse` hook. It checks
   for `jq` and `prettier` before running; if either is missing it exits silently. Prettier
