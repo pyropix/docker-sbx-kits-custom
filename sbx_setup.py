@@ -12,11 +12,16 @@ sbx_run.py.
 
 import argparse
 import getpass
+import os
 import shlex
 import shutil
 import subprocess
 import sys
 from typing import NamedTuple
+
+# Opt out of all sbx analytics for every command this script runs, mirroring
+# scripts/00_docker_sbx_setup.sh. Child processes inherit os.environ.
+os.environ["SBX_NO_TELEMETRY"] = "1"
 
 
 class Cmd(NamedTuple):

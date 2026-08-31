@@ -11,11 +11,16 @@ scenario, so the ten bash scripts this replaces cannot drift apart again.
 
 import argparse
 import json
+import os
 import shlex
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+# Opt out of all sbx analytics for every command this script runs, mirroring
+# scripts/00_docker_sbx_setup.sh. Child processes inherit os.environ.
+os.environ["SBX_NO_TELEMETRY"] = "1"
 
 # Mode -> sandbox-name suffix.
 #
