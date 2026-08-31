@@ -778,13 +778,19 @@ class TestBashModeExistenceCheck(unittest.TestCase):
         def fake_capture(argv):
             return 1, ""
 
-        original = sbx_run.run_capture
+        def fake_require_tool(name, hint):
+            return name
+
+        original_capture = sbx_run.run_capture
+        original_require_tool = sbx_run.require_tool
         sbx_run.run_capture = fake_capture
+        sbx_run.require_tool = fake_require_tool
         try:
             with self.assertRaises(SystemExit) as ctx:
                 sbx_run.main(["--mode", "bash"])
         finally:
-            sbx_run.run_capture = original
+            sbx_run.run_capture = original_capture
+            sbx_run.require_tool = original_require_tool
         msg = str(ctx.exception)
         self.assertIn("no sandbox", msg)
 
