@@ -838,8 +838,16 @@ class TestBashAndTmuxModeCreateIfMissing(unittest.TestCase):
         self.assertEqual(
             inter,
             [
-                ["sbx", "create", "--name", "claude-custom", "--kit", str(sbx_run.KIT_DIR),
-                 "claude", "/tmp/proj"],
+                [
+                    "sbx",
+                    "create",
+                    "--name",
+                    "claude-custom",
+                    "--kit",
+                    str(sbx_run.KIT_DIR),
+                    "claude",
+                    "/tmp/proj",
+                ],
                 ["sbx", "exec", "-it", "claude-custom", "bash"],
             ],
         )
