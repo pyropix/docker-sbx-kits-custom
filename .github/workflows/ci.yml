@@ -1,6 +1,8 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
 
@@ -9,23 +11,42 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
       - name: Ruff lint
         run: uvx ruff@0.16.5 check .
+      - name: Ruff format check
+        run: uvx ruff@0.16.5 format --check .
+
+  validate-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate YAML (spec.yaml)
+        run: python3 -c "import yaml, pathlib; yaml.safe_load(pathlib.Path('sbx-kits/claude-custom/spec.yaml').read_text())"
+      - name: Validate JSON (settings.template.json)
+        run: python3 -c "import json, pathlib; json.loads(pathlib.Path('sbx-kits/claude-custom/files/home/.claude/settings.template.json').read_text())"
 
   shellcheck:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - name: ShellCheck
-        run: shellcheck scripts/*.sh
+        run: shellcheck $(git ls-files '*.sh')
 
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install test dependencies
+        run: pip install pyyaml
       - name: Run tests
         run: python3 -m unittest discover -s . -v
